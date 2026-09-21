@@ -1,0 +1,131 @@
+project:
+  name: "PolyHorizon Model Serving"
+  description: "FastAPI serving layer for TFT forecasts with Feast + MLflow."
+  version: "0.1.0"
+  service_name: "polyhorizon.model_serving"
+
+api:
+  host: ${SERVING_HOST}
+  port: ${SERVING_PORT}
+  root_path: ""
+  version_prefix: "/v1"
+  docs_enabled: true
+  cors_allow_origins: ${SERVING_CORS_ORIGINS}
+  cors_allow_methods: ["GET", "POST"]
+  cors_allow_headers: ["*"]
+  request_timeout_seconds: ${SERVING_REQUEST_TIMEOUT}
+
+logging:
+  log_level: ${LOG_LEVEL}
+  log_dir: ${LOG_DIR}
+  log_format: ${LOG_FORMAT}
+  log_date_format: ${LOG_DATE_FORMAT}
+  log_to_file: ${LOG_TO_FILE}
+  log_json_format: ${LOG_JSON_FORMAT}
+  max_file_size: ${MAX_LOG_FILE_SIZE}
+  backup_count: ${LOG_BACKUP_COUNT}
+  alert_emails: []
+
+monitoring:
+  enable_metrics: ${SERVING_ENABLE_METRICS}
+  metrics_path: ${SERVING_METRICS_PATH}
+
+security:
+  require_api_key: ${SERVING_REQUIRE_API_KEY}
+  api_keys: ${SERVING_API_KEYS}
+  operator_api_keys: ${SERVING_OPERATOR_API_KEYS:-}
+  api_key_header: ${SERVING_API_KEY_HEADER}
+  rate_limit_enabled: ${SERVING_RATE_LIMIT_ENABLED}
+  rate_limit_per_minute: ${SERVING_RATE_LIMIT_PER_MINUTE}
+  rate_limit_prefix: ${SERVING_RATE_LIMIT_PREFIX}
+  exempt_paths: ${SERVING_AUTH_EXEMPT_PATHS}
+
+mlflow:
+  tracking_uri: ${MLFLOW_TRACKING_URI}
+
+model_registry:
+  name: ${MODEL_REGISTRY_NAME}
+  champion_alias: ${MODEL_CHAMPION_ALIAS}
+  staging_alias: ${MODEL_CHALLENGER_ALIAS}
+  artifact_path: ${MODEL_ARTIFACT_PATH}
+  bootstrap_champion_alias: true
+
+feast:
+  repo_path: ${FEAST_REPO_PATH}
+  feature_store_yaml: ${FEAST_STORE_YAML}
+  project_name: ${FEAST_PROJECT_NAME}
+  feature_view: ${FEAST_FEATURE_VIEW}
+  feature_refs: ${SERVING_FEATURE_REFS}
+
+redis:
+  enabled: ${SERVING_REDIS_ENABLED}
+  host: ${REDIS_HOST}
+  port: ${REDIS_PORT}
+  db: ${SERVING_REDIS_DB}
+  password: ${SERVING_REDIS_PASSWORD}
+  key_prefix: "forecast"
+  ttl_seconds: ${SERVING_CACHE_TTL}
+
+forecast:
+  horizon: ${SERVING_FORECAST_HORIZON}
+  quantiles: ${SERVING_FORECAST_QUANTILES}
+  target_type: ${SERVING_FORECAST_TARGET_TYPE}
+  base_price_feature: ${SERVING_FORECAST_BASE_PRICE_FEATURE}
+  return_to_price_method: ${SERVING_RETURN_METHOD}
+  output_decimals: 4
+
+client_metadata:
+  bars_per_day: 13
+  horizon_days: [1, 2, 3]
+  currency: "USD"
+  market_timezone: "America/New_York"
+  feature_debug_enabled: ${SERVING_FEATURE_DEBUG_ENABLED:-false}
+  model_reload_enabled: ${SERVING_MODEL_RELOAD_ENABLED:-false}
+
+inference:
+  max_encoder_length: ${SERVING_TFT_MAX_ENCODER_LENGTH}
+  max_prediction_length: ${SERVING_TFT_MAX_PREDICTION_LENGTH}
+  time_idx_field: ${SERVING_TFT_TIME_IDX_FIELD}
+  time_field: ${SERVING_TFT_TIME_FIELD}
+  group_id_field: ${SERVING_TFT_GROUP_ID_FIELD}
+  freq: ${SERVING_TFT_FREQ}
+  target: ${SERVING_TFT_TARGET}
+  static_categoricals: ["symbol"]
+  time_varying_known_categoricals: ["is_holiday", "is_early_close", "day_of_week"]
+  time_varying_known_reals:
+    - "hour"
+    - "minute"
+    - "hour_sin"
+    - "hour_cos"
+    - "dow_sin"
+    - "dow_cos"
+  time_varying_unknown_reals:
+    - "open"
+    - "high"
+    - "low"
+    - "close"
+    - "total_volume"
+    - "rolling_avg_close"
+    - "rolling_volatility_close"
+    - "log_volume"
+    - "log_close"
+    - "target"
+
+offline_store:
+  db_schema: ${FEAST_SCHEMA}
+  offline_table_name: ${OFFLINE_TABLE_NAME}
+  snapshot_table_name: ${SNAPSHOT_TABLE_NAME}
+  history_rows: ${SERVING_HISTORY_ROWS}
+
+connection_parameters:
+  host: ${POSTGRES_HOST}
+  port: ${POSTGRES_PORT}
+  database: ${POSTGRES_FEAST_DB}
+  user: ${POSTGRES_FEAST_USER}
+  password: ${POSTGRES_FEAST_PASSWORD}
+  connect_timeout: ${POSTGRES_CONNECT_TIMEOUT}
+
+warmup_enabled: ${SERVING_WARMUP_ENABLED}
+publication:
+  forecast_mode: post_close
+  publication_delay_minutes: 60

@@ -1,0 +1,175 @@
+# Single Source of Truth
+# YAML = runtime values
+project:
+  name: "polyhorizon-tft-model-training"
+  version: "v1"
+
+
+data:
+  parquet_path: "s3://polygonai-data/processed/latest_training.parquet"  # or local path # change this
+  min_days_required: 180
+  required_symbols: 2
+  db_schema: ${DB_SCHEMA}
+  offline_table_name : ${OFFLINE_TABLE_NAME}
+  snapshot_table_name: ${SNAPSHOT_TABLE_NAME}
+
+
+# tft feature registry here
+features:
+  target: "target"
+  group_ids: ["symbol"]
+  static_categoricals: ["symbol"]
+  time_varying_known_categoricals: 
+    - "is_holiday"
+    - "is_early_close"
+    - "day_of_week" 
+  time_varying_known_reals:  
+    - "hour"
+    - "minute"
+    - "hour_sin"
+    - "hour_cos"
+    - "dow_sin"
+    - "dow_cos"
+  time_varying_unknown_reals: 
+    - "open"
+    - "high"
+    - "low"
+    - "close"
+    - "log_volume"
+    - "log_close"
+    - "rolling_avg_close" 
+    - "rolling_volatility_close" 
+    - "target" # change
+  feature_cols:
+    - "target"
+    - "open"
+    - "high" 
+    - "low" 
+    - "close" 
+    - "total_volume" 
+    - "log_volume"
+    - "log_close"
+    - "rolling_avg_close" 
+    - "rolling_volatility_close"
+    - "hour"
+    - "minute"
+    - "hour_sin"
+    - "hour_cos"
+    - "dow_sin"
+    - "dow_cos"
+
+
+training:
+  max_encoder_length: 780  # Used 3 months (13 bars in a day for each symbol) # Look-back window
+  max_prediction_length: 39 # 3-days into the future (forecast horizon)
+  batch_size: 128
+  num_workers: 8
+  max_epochs: 100
+  gradient_clip_val: 0.5
+  quantiles: [0.1, 0.5, 0.9]
+  validation_ratio: 0.2 # Hold out latest distinct UTC timestamps globally; decoder targets must follow cutoff.
+  early_stopping_patience: 15
+  lr_reduce_patience: 3
+  forecast_horizon: 39 # 13 bars * 3 days
+
+
+optuna:
+  n_trials: 60
+  timeout_hours: 12
+  direction: "minimize"
+  max_epochs: 50
+  batch_size: 128
+  num_workers: 2
+  early_stop_patience: 5
+  storage_url: "sqlite:///optuna.db" #${use one of the url of the Databases}
+  seed: 42
+
+
+hyperparameters:
+  learning_rate: {low: 1e-5, high: 1e-2, log: True}
+  hidden_size: {min: 32, max: 160, step: 16}
+  dropout: {low: 0.05, high: 0.3}
+  attention_head_size: {min: 4, max: 16, step: 4}
+  hidden_continuous_size: {min: 16, max: 96, step: 16}
+
+
+
+mlflow:
+  experiment_name: "TFT_Quantile_Model"
+  tracking_uri: ${MLFLOW_TRACKING_URI}
+  backend_store: ${MLFLOW_BACKEND_STORE_URI}
+  tags: {
+    horizon: 3d
+  }
+  # tracking_uri: "http://mlflow.polygonai.internal:5000"  # or file://./experiments/mlflow_tracking
+  # artifact_location: "s3://polygonai-mlflow-artifacts/"
+
+
+model_registry:
+  name: "StockTFT_Quantile"
+  champion_alias: "champion"
+  staging_alias: "challenger"
+  artifact_path: "tft_model" # change to the correct infra path (check env and compose file)
+
+
+governance:
+  minimum_evaluation_samples: 100
+  minimum_baseline_mae_improvement: 0.02
+  maximum_calibration_error: 0.10
+  direction_threshold: 0.001
+  improvement_threshold: 0.02
+  max_mae_degradation: 0.10
+  score_weights: [0.7, 0.3]
+  stability_max_std: null
+  horizon_gates: []
+
+
+drift:
+  reference_days: 180    # 6 months
+  current_days: 30       # Recent 30 days
+  threshold: 0.20
+  threshold_auc: 0.70   # If AUC > 0.7, distributions are learnably different
+  threshold_wasserstein: 0.1  # For univariate shift magnitude
+  ignore_columns: ["event_timestamp", "symbol"]
+
+
+logging:
+  log_level: ${LOG_LEVEL}
+  log_dir: ${LOG_DIR}
+  log_format: ${LOG_FORMAT}
+  log_date_format: ${LOG_DATE_FORMAT}
+  log_to_file: ${LOG_TO_FILE}
+  log_json_format: ${LOG_JSON_FORMAT}
+  max_file_size: ${MAX_LOG_FILE_SIZE}
+  backup_count: ${LOG_BACKUP_COUNT}
+  alert_emails:
+    - "basil.sillians@gmail.com"
+
+monitoring:
+  enable_metrics: ${TRAINING_ENABLE_METRICS}
+  pushgateway_url: ${TRAINING_PUSHGATEWAY_URL}
+  metrics_prefix: ${TRAINING_METRICS_PREFIX}
+
+
+model:
+  learning_rate: 0.001
+  hidden_size: 64
+  attention_head_size: 8
+  dropout: 0.1
+  hidden_continuous_size: 32
+  output_size: 3 # p10, p50, p90
+  quantiles: [0.1, 0.5, 0.9]
+  log_interval: 10
+  reduce_on_plateau_patience: 3
+
+
+
+
+# change accordingly (check compose and env file)
+connection_parameters:
+  host: ${POSTGRES_HOST}
+  port: ${POSTGRES_PORT}
+  database: ${POSTGRES_FEAST_DB}
+  user: ${POSTGRES_FEAST_USER}
+  password: ${POSTGRES_FEAST_PASSWORD}
+  connect_timeout: ${POSTGRES_CONNECT_TIMEOUT}

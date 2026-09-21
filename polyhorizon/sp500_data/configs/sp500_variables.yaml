@@ -1,0 +1,25 @@
+project:
+  name: "PolyHorizon SP500 Companies"
+  description: "SP500 Companies repository for PolyHorizon"
+  version: "0.1.0"
+
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+  alert_emails:
+    - "basil.sillians@gmail.com"
+
+
+bucket_details:
+  sp500companies_bucket_name: ${SP500COMPANIES}
+  seaweed_s3_endpoint: ${SEAWEED_S3_ENDPOINT}
+  aws_access_key_id: ${AWS_ACCESS_KEY_ID}
+  aws_secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+  sp500_url: ${SP500_URL}
+
+universe_policy:
+  minimum_constituents: 450
+  maximum_constituents: 550
+  maximum_change_fraction: 0.10
+  request_timeout_seconds: 30

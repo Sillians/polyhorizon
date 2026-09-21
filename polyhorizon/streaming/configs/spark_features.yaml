@@ -1,0 +1,152 @@
+project:
+  name: "PolyHorizon Data Streaming Service"
+  description: "Spark Streaming Service."
+  version: "0.1.0"
+
+
+
+finnhub_connection:
+  finnhub_token: ${FINNHUB_TOKEN}
+  finnhub_ws_url: ${FINNHUB_WS_URL}
+  max_symbols_per_connection: ${MAX_SYMBOLS_PER_CONNECTION}
+  max_total_symbols: ${MAX_TOTAL_SYMBOLS}
+  subscription_delay: ${SUBSCRIPTION_DELAY_SECONDS}
+  connection_retry_delay: ${CONNECTION_RETRY_DELAY}
+  rate_limit_delay: ${RATE_LIMIT_DELAY}
+  max_retries: ${MAX_RETRIES}
+  ping_interval: ${WS_PING_INTERVAL}
+  ping_timeout: ${WS_PING_TIMEOUT}
+  close_timeout: ${WS_CLOSE_TIMEOUT}
+  max_message_size: ${WS_MAX_MESSAGE_SIZE}
+
+
+
+bucket_details:
+  seaweedfs_s3_endpoint: ${SEAWEED_S3_ENDPOINT}
+  seaweedfs_access_key: ${AWS_ACCESS_KEY_ID}
+  seaweedfs_secret_key: ${AWS_SECRET_ACCESS_KEY}
+  tickers_s3_path: ${SP500COMPANIES_DATA}
+  seaweedfs_s3_buckets: ${SEAWEED_S3_BUCKETS}
+
+
+
+kafka_connection:
+  kafka_servers: ${KAFKA_SERVERS}
+  kafka_topic: ${KAFKA_TOPIC}
+  tickers_csv: ${TICKERS_CSV}
+  producer_acks: ${KAFKA_PRODUCER_ACKS}
+  producer_retries: ${KAFKA_PRODUCER_RETRIES}
+  producer_max_in_flight: ${KAFKA_PRODUCER_MAX_IN_FLIGHT}
+  consumer_group_id: ${CONSUMER_GROUP_ID}
+  starting_offsets: "latest"
+  fail_on_data_loss: false
+  max_offsets_per_trigger: 50000
+  fetch_min_bytes: 1048576
+  fetch_max_wait_ms: 500
+  max_partition_fetch_bytes: 10485760
+
+
+
+load_consumer_performance:
+  auto_offset_reset: ${KAFKA_AUTO_OFFSET_RESET}
+  enable_auto_commit: ${KAFKA_ENABLE_AUTO_COMMIT}
+  auto_commit_interval_ms: ${KAFKA_AUTO_COMMIT_INTERVAL_MS}
+  session_timeout_ms: ${KAFKA_SESSION_TIMEOUT_MS}
+  heartbeat_interval_ms: ${KAFKA_HEARTBEAT_INTERVAL_MS}
+  max_poll_records: ${KAFKA_MAX_POLL_RECORDS}
+  consumer_timeout_ms: ${KAFKA_CONSUMER_TIMEOUT_MS}
+
+
+
+load_processing_configuration:
+  batch_processing: ${CONSUMER_BATCH_PROCESSING}
+  batch_size: ${CONSUMER_BATCH_SIZE}
+  processing_timeout: ${CONSUMER_PROCESSING_TIMEOUT}
+
+
+
+monitoring_and_metrics:
+  metrics_interval: ${CONSUMER_METRICS_INTERVAL}
+  health_check_interval: ${CONSUMER_HEALTH_CHECK_INTERVAL}
+  pushgateway_url: "prometheus-pushgateway:9091"
+  metrics_prefix: "polyhorizon_streaming"
+  enable_metrics: true
+
+
+
+error_handling:
+  max_consecutive_errors: ${CONSUMER_MAX_CONSECUTIVE_ERRORS}
+  error_backoff_seconds: ${CONSUMER_ERROR_BACKOFF_SECONDS}
+
+
+
+streaming_storage:
+  bronze: ${BRONZE_PATH}
+  gold: ${GOLD_PATH}
+  cp_bronze: ${CHECKPOINT_BRONZE}
+  cp_gold: ${CHECKPOINT_GOLD}
+  dead_letter: ${DEAD_LETTER_PATH}
+  cp_dead_letter: ${CHECKPOINT_DEAD_LETTER}
+  source_table: ${GOLD_PATH}
+  feature_output_path: ${FEATURE_OUTPUT_PATH} #(Silver/Gold Feature Layer)
+  trigger_interval: "30 seconds"
+  maintenance_batch_interval: ${MAINTENANCE_INTERVAL}
+  retention_hours: ${RETENTION_HOURS}
+
+
+
+spark_connection:
+  spark_log_level: ${SPARK_LOG_LEVEL}
+  spark_master: ${SPARK_MASTER_URL}
+  packages:
+    - "io.delta:delta-spark_2.12:${DELTA_SPARK_VERSION}"
+    - "org.apache.spark:spark-sql-kafka-0-10_2.12:${SPARK_SQL_KAFKA_VERSION}"
+    - "org.apache.hadoop:hadoop-aws:${HADOOP_AWS_VERSION}"
+    - "com.amazonaws:aws-java-sdk-bundle:${AWS_SDK_BUNDLE_VERSION}"
+  conf:
+    spark.sql.shuffle.partitions: "200"
+    spark.sql.streaming.stateStore.providerClass: org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider
+    spark.sql.streaming.checkpointLocation: s3a://polyhorizon-streamingdata/checkpoints/
+    spark.hadoop.fs.s3a.committer.name: magic
+    spark.hadoop.fs.s3a.committer.magic.enabled: "true"
+
+
+
+features:
+  freq: "30 minutes"
+  lookback_bars: 60
+  watermark_delay: "2 minutes"
+  late_data_strategy: "dead_letter"
+  late_data_threshold: "5 minutes"
+  raw_symbol_col: "symbol"
+  raw_price_col: "price"
+  raw_volume_col: "volume"
+  raw_timestamp_col: "timestamp"
+  time_col: "window_end"
+  symbol_col: "symbol"
+  open_col: "open"
+  high_col: "high"
+  low_col: "low"
+  close_col: "close"
+  volume_col: "total_volume"
+
+
+market_schedule:
+  enabled: true
+  calendar: "NYSE"
+  timezone: "America/New_York"
+  shutdown_grace_minutes: 5
+
+
+
+logging:
+  level: ${LOG_LEVEL}
+  format: ${LOG_FORMAT}
+  date_format: ${LOG_DATE_FORMAT}
+  log_dir: ${LOG_DIR}
+  log_to_file: ${LOG_TO_FILE}
+  log_json_format: ${LOG_JSON_FORMAT}
+  max_file_size: ${MAX_LOG_FILE_SIZE}
+  backup_count: ${LOG_BACKUP_COUNT}
+  alert_emails:
+    - "basil.sillians@gmail.com"

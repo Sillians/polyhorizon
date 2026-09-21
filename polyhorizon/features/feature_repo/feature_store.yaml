@@ -1,0 +1,30 @@
+project: ${FEAST_PROJECT_NAME}
+provider: local
+
+registry:
+  registry_type: sql
+  path: postgresql+psycopg2://${POSTGRES_FEAST_REGISTRY_USER}:${POSTGRES_FEAST_REGISTRY_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_FEAST_REGISTRY_DB}
+  search_path: ${FEAST_REGISTRY_SCHEMA}
+  cache_ttl_seconds: 600
+  sqlalchemy_config_kwargs:
+    echo: false
+    pool_pre_ping: true
+
+offline_store:
+  type: postgres
+  host: ${POSTGRES_HOST}
+  port: ${POSTGRES_PORT}
+  database: ${POSTGRES_FEAST_DB}
+  db_schema: ${FEAST_SCHEMA}
+  user: ${POSTGRES_FEAST_USER}
+  password: ${POSTGRES_FEAST_PASSWORD}
+  entity_select_mode: temp_table
+
+online_store:
+  type: redis
+  connection_string: "${REDIS_HOST}:${REDIS_PORT}"
+
+entity_key_serialization_version: 3
+
+auth:
+  type: no_auth

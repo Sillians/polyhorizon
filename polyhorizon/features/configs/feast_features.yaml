@@ -1,0 +1,160 @@
+# Single Source of Truth
+project:
+  name: "PolyHorizon Feature Store"
+  description: "Feature repository for PolyHorizon AI – managing stock OHLCV features."
+  version: "0.1.0"
+  feast_project_name: ${FEAST_PROJECT_NAME}
+  feature_view: "stock_ohlcv_features"
+
+
+# Feast repository paths (relative to this file's location)
+paths:
+  base_dir: "."                          # Relative to feast_features.yaml location
+  project_root: ".."                     # Parent of base_dir
+  feast_repo_path: "../feature_repo"      # feature_repo/ subdirectory
+  feature_store_yaml: "./feature_repo/feature_store.yaml"
+  yaml_file_path: "./scripts/features.yaml"  # Your existing features.yaml
+
+
+data:
+  parquet_path: "s3://polygonai-data/processed/latest_training.parquet"  # or local path
+  min_days_required: 180
+  required_symbols: 2
+  db_schema: ${FEAST_SCHEMA}
+  offline_table_name : ${OFFLINE_TABLE_NAME}
+  snapshot_table_name: ${SNAPSHOT_TABLE_NAME}
+  snapshot_days: ${SNAPSHOT_DAYS}
+  enable_partitioning: false
+  partition_by: window_start
+  partition_granularity: month
+
+data_contract:
+  required_columns:
+    - symbol
+    - event_timestamp
+    - window_start
+    - open
+    - high
+    - low
+    - close
+    - total_volume
+  column_types:
+    symbol: string
+    event_timestamp: datetime
+    window_start: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    total_volume: int
+  allow_extra_columns: true
+
+
+logging:
+  log_level: ${LOG_LEVEL}
+  log_dir: ${LOG_DIR}
+  log_format: ${LOG_FORMAT}
+  log_date_format: ${LOG_DATE_FORMAT}
+  log_to_file: ${LOG_TO_FILE}
+  log_json_format: ${LOG_JSON_FORMAT}
+  max_file_size: ${MAX_LOG_FILE_SIZE}
+  backup_count: ${LOG_BACKUP_COUNT}
+  alert_emails:
+    - "basil.sillians@gmail.com"
+
+monitoring:
+  enable_metrics: ${FEATURES_ENABLE_METRICS}
+  pushgateway_url: ${FEATURES_PUSHGATEWAY_URL}
+  metrics_prefix: ${FEATURES_METRICS_PREFIX}
+
+
+connection_parameters:
+  host: ${POSTGRES_HOST}
+  port: ${POSTGRES_PORT}
+  database: ${POSTGRES_FEAST_DB}
+  user: ${POSTGRES_FEAST_USER}
+  password: ${POSTGRES_FEAST_PASSWORD}
+  connect_timeout: ${POSTGRES_CONNECT_TIMEOUT}
+
+# Feast registry (metadata) connection
+registry:
+  host: ${POSTGRES_HOST}
+  port: ${POSTGRES_PORT}
+  database: ${POSTGRES_FEAST_REGISTRY_DB}
+  user: ${POSTGRES_FEAST_REGISTRY_USER}
+  password: ${POSTGRES_FEAST_REGISTRY_PASSWORD}
+  connect_timeout: ${POSTGRES_CONNECT_TIMEOUT}
+  schema: ${FEAST_REGISTRY_SCHEMA}
+
+
+# Feast-specific settings
+feast_parameters:
+  lookback_days: 30
+  freq: 30min
+  ttl_days: 7
+  z_threshold: 3.0
+  drift_threshold: 0.05
+  max_backfill_days: 90
+
+
+features:
+  stock_ohlcv_features:
+    - symbol
+    - open
+    - high
+    - low
+    - close
+    - total_volume
+    - rolling_avg_close
+    - rolling_volatility_close
+    - event_timestamp
+
+  symbols:
+    - NVDA
+    - MSFT
+    - AAPL
+
+  required_columns:
+    - symbol
+    - open
+    - high
+    - low
+    - close
+
+
+# New: Feast-style feature references
+feast_features:
+  stock_ohlcv_features:                  # corresponds to STOCK_OHLCV_FEATURES
+    - "stock_ohlcv_features:open"
+    - "stock_ohlcv_features:high"
+    - "stock_ohlcv_features:low"
+    - "stock_ohlcv_features:close"
+    - "stock_ohlcv_features:total_volume"
+    - "stock_ohlcv_features:rolling_avg_close"
+    - "stock_ohlcv_features:rolling_volatility_close"
+    - "stock_ohlcv_features:event_timestamp"
+
+  stock_price_prediction_features:           # corresponds to STOCK_PRICE_PREDICTION_FEATURES
+    - "stock_ohlcv_features:open"
+    - "stock_ohlcv_features:high"
+    - "stock_ohlcv_features:low"
+    - "stock_ohlcv_features:close"
+    - "stock_ohlcv_features:rolling_avg_close"
+
+
+redis_connection_parameters:
+  redis_host: ${REDIS_HOST}
+  redis_port: ${REDIS_PORT}
+
+
+
+bucket_details:
+  seaweedfs_s3_endpoint: ${SEAWEED_S3_ENDPOINT}
+  seaweedfs_access_key: ${AWS_ACCESS_KEY_ID}
+  seaweedfs_secret_key: ${AWS_SECRET_ACCESS_KEY}
+  tickers_s3_path: ${SP500COMPANIES_DATA}
+  seaweedfs_s3_buckets: ${SEAWEED_S3_BUCKETS}
+  symbols_bucket: ${SYMBOLS_BUCKET}
+  symbols_key: ${SYMBOLS_KEY}
+  feature_output_path: ${FEATURE_OUTPUT_PATH}
+  feature_parquet_path: ${FEATURE_OUTPUT_PATH} # Legacy manual loader alias; orchestration uses pinned manifests.

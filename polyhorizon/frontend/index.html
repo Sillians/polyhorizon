@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#173e39">
+<title>PolyHorizon — Forecast workspace</title>
+</head>
+<body>
+<a class="skip" href="#main">Skip to workspace</a>
+<header class="topbar">
+<a class="brand" href="/">
+<span class="monogram">PH</span> PolyHorizon <span class="edition">MARKET INTELLIGENCE</span>
+</a>
+<nav aria-label="Main">
+<a href="/" id="product-link">Forecasts</a>
+<a href="/ops" id="ops-link">Operations</a>
+</nav>
+<button id="settings-open" class="quiet">Connection settings</button>
+</header>
+<main id="main">
+<div class="page-heading">
+<div>
+<p class="eyebrow" id="eyebrow">THE FORECAST WORKSPACE</p>
+<h1 id="page-title">A clearer view of what’s next.</h1>
+<p class="subheading" id="page-description">Explore price scenarios. Keep uncertainty in view.</p>
+</div>
+<span id="health" class="badge">Connecting…</span>
+</div>
+<div id="notice" class="notice" role="status" aria-live="polite">Connecting to the forecasting service…</div>
+<section id="product">
+<div class="toolbar">
+<label>Instrument<select id="symbol" disabled>
+<option>Unavailable</option>
+</select>
+</label>
+<label>Forecast horizon<select id="horizon" disabled>
+<option>Unavailable</option>
+</select>
+</label>
+<button id="run" disabled>Generate forecast ↗</button>
+<button id="retry" class="secondary">Reconnect</button>
+<button id="demo" class="quiet">Explore a demo</button>
+</div>
+<div class="summary-grid">
+<article>
+<p>Last observed close</p>
+<strong id="base">—</strong>
+<small id="asof">Not a live quote</small>
+</article>
+<article>
+<p>End-of-horizon median</p>
+<strong id="median">—</strong>
+<small id="change">Relative to observed close</small>
+</article>
+<article>
+<p>End-of-horizon P10–P90</p>
+<strong id="range">—</strong>
+<small>Model quantiles · not guaranteed bounds</small>
+</article>
+</div>
+<section class="chart-card" aria-labelledby="chart-title">
+<div class="section-heading">
+<div>
+<p class="eyebrow">PRICE OUTLOOK</p>
+<h2 id="chart-title">History meets possibility.</h2>
+</div>
+<div class="legend">
+<span class="history-key">Observed</span>
+<span class="median-key">Median</span>
+<span class="band-key">P10–P90</span>
+</div>
+</div>
+<p id="chart-context" class="muted">Generate a forecast to explore the path ahead.</p>
+<div id="empty" class="empty">
+<span class="empty-icon" aria-hidden="true">↗</span>
+<h3>Your next perspective starts here.</h3>
+<p>Connect to the serving API, or explore the layout with clearly labeled synthetic data.</p>
+</div>
+<svg id="chart" viewBox="0 0 1000 360" role="img" tabindex="0" aria-label="Forecast chart. Use left and right arrow keys to inspect forecast bars." hidden>
+</svg>
+<div id="inspect" class="inspection" aria-live="polite">No forecast selected.</div>
+<p class="chart-note">Trading bars are equally spaced; overnight and non-trading gaps are compressed. All times shown in <span id="timezone">market time</span>.</p>
+</section>
+<div class="details-grid">
+<details class="panel" open>
+<summary>Forecast values <span>Inspect the numbers</span>
+</summary>
+<div class="table-controls">
+<label>Rows<select id="aggregation">
+<option value="bars">Every trading bar</option>
+<option value="daily">Last forecast bar per market date</option>
+</select>
+</label>
+</div>
+<div class="table-scroll">
+<table>
+<caption class="sr-only">Forecast quantiles by target timestamp</caption>
+<thead>
+<tr>
+<th>Bar / day</th>
+<th>Target time</th>
+<th>P10</th>
+<th>P50</th>
+<th>P90</th>
+</tr>
+</thead>
+<tbody id="rows">
+</tbody>
+</table>
+</div>
+</details>
+<details class="panel" open>
+<summary>About this forecast</summary>
+<dl id="provenance">
+<dt>Source</dt>
+<dd>No forecast generated</dd>
+</dl>
+<p class="disclaimer">Scenarios, not investment advice. A narrower prediction band does not establish higher accuracy. Live evaluation and calibration metrics are not available in this interface.</p>
+</details>
+</div>
+</section>
+<section id="ops" hidden>
+<div class="panel ops-lock" id="ops-lock">
+<p class="eyebrow">RESTRICTED WORKSPACE</p>
+<h2>Operator access</h2>
+<p>A separate operator credential is required for feature debugging and champion reloads. Forecast API keys do not authorize these actions.</p>
+<form id="ops-login">
+<label>Operator API key<input id="operator-key" type="password" autocomplete="off" required>
+</label>
+<button>Unlock console</button>
+</form>
+</div>
+<div id="ops-content" hidden>
+<div class="section-heading">
+<h2>Service inspection</h2>
+<button id="lock" class="secondary">Lock console</button>
+</div>
+<div class="ops-grid">
+<article class="panel">
+<h3>Champion model</h3>
+<pre id="model-data">Not loaded</pre>
+<button id="model-refresh" class="secondary">Refresh metadata</button>
+<button id="reload" disabled>Reload champion</button>
+<p class="muted">Reloads the current champion alias; does not promote a new model.</p>
+</article>
+<article class="panel">
+<h3>Feature inspection</h3>
+<label>Instrument<select id="ops-symbol">
+</select>
+</label>
+<button id="features" class="secondary" disabled>Inspect latest 10 rows</button>
+<pre id="feature-data">No feature data requested.</pre>
+</article>
+</div>
+</div>
+</section>
+<footer>
+<span>PolyHorizon / Forecast intelligence</span>
+<span>Observed data. Explicit uncertainty.</span>
+</footer>
+</main>
+<dialog id="settings">
+<form id="connection-form">
+<div class="section-heading">
+<h2>API connection</h2>
+<button type="button" id="settings-close" class="quiet" aria-label="Close settings">✕</button>
+</div>
+<p>Credentials stay in memory for this page only. Changing connections clears the current forecast.</p>
+<label>API base URL<input id="api-base" type="url" required>
+</label>
+<label>Forecast API key (if required)<input id="api-key" type="password" autocomplete="off">
+</label>
+<button>Apply and connect</button>
+</form>
+</dialog>
+<dialog id="reload-dialog">
+<h2>Reload champion model?</h2>
+<p>This replaces the serving process’s loaded model with the current registry champion. Existing requests may be affected.</p>
+<div class="toolbar">
+<button id="confirm-reload">Confirm reload</button>
+<button id="cancel-reload" class="secondary">Cancel</button>
+</div>
+</dialog>
+<script type="module" src="/src/main.js">
+</script>
+</body>
+</html>
