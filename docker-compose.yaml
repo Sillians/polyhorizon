@@ -1,0 +1,860 @@
+networks:
+  ml-platform:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  postgres_backups:
+  pgadmin_data:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
+  seaweedfs-master-data:
+  seaweedfs-volume-data:
+  seaweedfs-filer-data:
+  redis_data:
+  grafana_data:
+  prefect_data:
+  spark_checkpoints:
+  prometheus_data:
+  alertmanager_data:
+  pushgateway_data:
+  loki_data:
+  alloy_data:
+
+
+services:
+  # --------------------
+  # PostgreSQL
+  # --------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: "--data-checksums --auth-host=scram-sha-256"
+
+      APP_DB: ${POSTGRES_APP_DB}
+      APP_USER: ${POSTGRES_APP_USER}
+      APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+
+      MLFLOW_DB: ${POSTGRES_MLFLOW_DB}
+      MLFLOW_USER: ${POSTGRES_MLFLOW_USER}
+      MLFLOW_PASSWORD: ${POSTGRES_MLFLOW_PASSWORD}
+
+      FEAST_DB: ${POSTGRES_FEAST_DB}
+      FEAST_USER: ${POSTGRES_FEAST_USER}
+      FEAST_PASSWORD: ${POSTGRES_FEAST_PASSWORD}
+      FEAST_SCHEMA: ${FEAST_SCHEMA}
+      FEAST_REGISTRY_DB: ${POSTGRES_FEAST_REGISTRY_DB}
+      FEAST_REGISTRY_USER: ${POSTGRES_FEAST_REGISTRY_USER}
+      FEAST_REGISTRY_PASSWORD: ${POSTGRES_FEAST_REGISTRY_PASSWORD}
+      FEAST_REGISTRY_SCHEMA: ${FEAST_REGISTRY_SCHEMA}
+
+      PREFECT_DB: ${POSTGRES_PREFECT_DB}
+      PREFECT_USER: ${POSTGRES_PREFECT_USER}
+      PREFECT_PASSWORD: ${POSTGRES_PREFECT_PASSWORD}
+      POSTGRES_MONITOR_USER: ${POSTGRES_MONITOR_USER}
+      POSTGRES_MONITOR_PASSWORD: ${POSTGRES_MONITOR_PASSWORD}
+
+      # POSTGRES_HOST: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres && psql -U postgres -d postgres -tAc 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5433:5432"
+    networks: [ml-platform]
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_MONITOR_USER}:${POSTGRES_MONITOR_PASSWORD}@postgres:5432/postgres?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [ml-platform]
+
+
+# --- INFRASTRUCTURE: PGADMIN ---
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks: [ml-platform]
+    depends_on:
+      postgres:
+        condition: service_started
+
+
+
+  # --------------------
+  # Zookeeper
+  # --------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.10
+    hostname: zookeeper
+    container_name: zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=stat,ruok"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD-SHELL", "echo stat | nc localhost 2181 | grep Mode"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ml-platform]
+
+
+  # --------------------
+  # Kafka
+  # --------------------
+  kafka-broker-1:
+    image: confluentinc/cp-kafka:7.4.10
+    hostname: kafka-broker-1
+    container_name: kafka-broker-1
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS: 18000
+      KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS: 18000
+
+      # Mapping: Internal (PLAINTEXT) vs External (PLAINTEXT_HOST)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-broker-1:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # Reliability Settings (The "Heat Shield")
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # Performance & ML specific
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: ${TOPIC_PARTITIONS}
+      KAFKA_DEFAULT_REPLICATION_FACTOR: ${TOPIC_REPLICATION_FACTOR}
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: kafka-broker-1
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+    networks: [ml-platform]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD", "kafka-topics", "--bootstrap-server", "kafka-broker-1:29092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  kafka-broker-2:
+    image: confluentinc/cp-kafka:7.4.10
+    hostname: kafka-broker-2
+    container_name: kafka-broker-2
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+      - "9102:9102"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS: 18000
+      KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS: 18000
+
+      # Mapping: Internal (PLAINTEXT) vs External (PLAINTEXT_HOST)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-broker-2:29093,EXTERNAL://localhost:9093
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29093,EXTERNAL://0.0.0.0:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # Reliability Settings (The "Heat Shield")
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # Performance & ML specific
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: ${TOPIC_PARTITIONS}
+      KAFKA_DEFAULT_REPLICATION_FACTOR: ${TOPIC_REPLICATION_FACTOR}
+      KAFKA_JMX_PORT: 9102
+      KAFKA_JMX_HOSTNAME: kafka-broker-2
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+    networks: [ml-platform]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD", "kafka-topics", "--bootstrap-server", "kafka-broker-2:29093", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+
+  kafka-broker-3:
+    image: confluentinc/cp-kafka:7.4.10
+    hostname: kafka-broker-3
+    container_name: kafka-broker-3
+    restart: unless-stopped
+    ports:
+      - "9094:9094" # External access
+      - "9103:9103" # JMX
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS: 18000
+      KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS: 18000
+
+      # Mapping: Internal (PLAINTEXT) vs External (PLAINTEXT_HOST)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-broker-3:29094,EXTERNAL://localhost:9094
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29094,EXTERNAL://0.0.0.0:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # Reliability Settings (The "Heat Shield")
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # Performance & ML specific
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" # Set to false to force using your init script
+      KAFKA_NUM_PARTITIONS: ${TOPIC_PARTITIONS}
+      KAFKA_DEFAULT_REPLICATION_FACTOR: ${TOPIC_REPLICATION_FACTOR}
+      KAFKA_JMX_PORT: 9103
+      KAFKA_JMX_HOSTNAME: kafka-broker-3  # Change to hostname for internal metrics scraping
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+    networks: [ml-platform]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD", "kafka-topics", "--bootstrap-server", "kafka-broker-3:29094", "--list"]
+      interval: 10s 
+      timeout: 5s
+      retries: 5
+
+
+
+  # --------------------
+  # Kafka Topic Initialization
+  # --------------------  
+  kafka-init:
+    image: confluentinc/cp-kafka:7.4.10
+    container_name: kafka-init
+    volumes:
+      - ./scripts/kafka/init-kafka.sh:/data/init-kafka.sh
+    networks: [ml-platform]
+    # Overriding entrypoint to bash prevents the "KAFKA_ZOOKEEPER_CONNECT is required" error
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      chmod +x /data/init-kafka.sh
+      /data/init-kafka.sh
+      "
+    depends_on:
+      kafka-broker-1:
+        condition: service_healthy
+      kafka-broker-2:
+        condition: service_healthy
+      kafka-broker-3:
+        condition: service_healthy
+    environment:
+      # Use the INTERNAL listener ports here
+      KAFKA_BOOTSTRAP_SERVERS: "kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094"
+      TOPIC_PARTITIONS: ${TOPIC_PARTITIONS}
+      TOPIC_REPLICATION_FACTOR: ${TOPIC_REPLICATION_FACTOR}
+      # Adding this avoids the error in your logs even if entrypoint fails to override
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+
+
+
+  # -------------------------
+  # seaweedfs (S3-compatible)
+  # -------------------------
+  master:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-master
+    command: >
+      master
+      -ip=master
+      -mdir=/data
+      -defaultReplication=000
+    volumes:
+      - seaweedfs-master-data:/data
+      # - ./data/master:/data
+    ports:
+      - "9333:9333"
+    networks: [ml-platform]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  volume:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-volume
+    depends_on:
+      - master
+    command: >
+      volume
+      -mserver=master:9333
+      -dir=/data
+      -max=50
+    volumes:
+      - seaweedfs-volume-data:/data
+      # - ./data/volume:/data
+    ports:
+      - "8080:8080"
+    networks: [ml-platform]
+    restart: unless-stopped
+
+  filer:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-filer
+    depends_on:
+      master:
+        condition: service_healthy
+    command: >
+      filer
+      -master=master:9333
+    volumes:
+      - seaweedfs-filer-data:/data
+      # - ./data/filer:/data
+    ports:
+      - "8888:8888"
+    networks: [ml-platform]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  seaweedfs-s3:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-s3
+    depends_on:
+      filer:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/entrypoint_s3.sh"]
+    ports:
+      - "8333:8333"
+    networks: [ml-platform]
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - ./scripts/seaweedfs/entrypoint_s3.sh:/entrypoint_s3.sh:ro
+    restart: unless-stopped
+
+  seaweedfs-bucket-init:
+    image: python:3.11-slim
+    restart: "no"
+    depends_on:
+      seaweedfs-s3:
+        condition: service_started
+    networks: [ml-platform]
+    volumes:
+      - ./scripts/seaweedfs/create_buckets.py:/create_buckets.py
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      set -x &&      
+      pip install --no-cache-dir boto3 python-dotenv &&
+      python -u /create_buckets.py
+      echo 'bucket init finished'
+      "
+    environment:
+      SEAWEED_S3_ENDPOINT: http://seaweedfs-s3:8333
+      SEAWEED_S3_BUCKETS: >
+        ${MLFLOW_BUCKET_NAME},
+        ${FEAST_OFFLINE_BUCKET},
+        ${FEAST_REGISTRY_BUCKET},
+        ${SP500COMPANIES},
+        ${STREAMINGDATA_BUCKET}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+
+
+  # --------------------
+  # MLflow
+  # --------------------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    restart: unless-stopped
+    ports:
+      - "5001:5000" # Host 5001 -> Container 5000
+    command: > 
+      mlflow server
+      --backend-store-uri postgresql://${POSTGRES_MLFLOW_USER}:${POSTGRES_MLFLOW_PASSWORD}@postgres:5432/${POSTGRES_MLFLOW_DB}
+      --host 0.0.0.0
+      --serve-artifacts
+      --artifacts-destination s3://${MLFLOW_BUCKET_NAME}/artifacts
+      --default-artifact-root s3://${MLFLOW_BUCKET_NAME}/artifacts
+      --port 5000
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      MLFLOW_S3_ENDPOINT_URL: http://seaweedfs-s3:8333
+      MLFLOW_S3_IGNORE_TLS: "true"
+    depends_on: 
+      postgres:
+        condition: service_healthy 
+      seaweedfs-bucket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/2.0/mlflow/experiments/list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks: [ml-platform]
+
+
+  # --------------------
+  # Redis (Online Store)
+  # --------------------
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes  
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    networks: [ml-platform]
+
+
+
+  # --------------------
+  # Spark Master
+  # --------------------
+  spark-master:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    image: spark-custom:3.5.7
+    container_name: spark-master
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-class
+      -javaagent:/opt/spark/jmx/jmx_prometheus_javaagent.jar=8090:/opt/spark/conf/jmx-spark.yaml
+      org.apache.spark.deploy.master.Master
+    ports:
+      - "7077:7077"   # Spark master
+      - "18080:8080"   # Spark UI
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_MODE: master
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ml-platform]
+    depends_on:
+      kafka-broker-1:
+        condition: service_healthy
+      kafka-broker-3:
+        condition: service_healthy
+
+
+  # --------------------
+  # Spark Worker
+  # --------------------
+  spark-worker:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    image: spark-custom:3.5.7
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-class
+      -javaagent:/opt/spark/jmx/jmx_prometheus_javaagent.jar=8091:/opt/spark/conf/jmx-spark.yaml
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    volumes:
+      - spark_checkpoints:/opt/spark/checkpoints
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    environment:
+      SPARK_MODE: worker
+      SPARK_WORKER_CORES: 2
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_HADOOP_FS_S3A_ENDPOINT: ${INTERNAL_SEAWEED_S3_ENDPOINT}
+      SPARK_HADOOP_FS_S3A_ACCESS_KEY: ${AWS_ACCESS_KEY_ID}
+      SPARK_HADOOP_FS_S3A_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY}
+    networks: [ml-platform]
+
+
+  spark-submit:
+    image: spark-custom:3.5.7
+    container_name: spark-submit
+    profiles: ["manual-streaming"]
+    depends_on:
+      spark-master:
+        condition: service_started
+    networks: [ml-platform]
+    env_file:
+      - .env
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: us-east-1
+      SPARK_MASTER_URL: spark://spark-master:7077
+      KAFKA_SERVERS: kafka-broker-1:29092,kafka-broker-2:29093,kafka-broker-3:29094
+      STREAMING_CONFIG_PATH: /opt/app/polyhorizon/streaming/configs/spark_features.yaml
+      SKIP_PREFLIGHT: "false"
+      CLEAN_START: "false"
+      DRY_RUN: "false"
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command:
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - --name
+      - polyhorizon-streaming-job
+      - --conf
+      - spark.sql.streaming.checkpointLocation=s3a://polyhorizon-streamingdata/checkpoints/
+      # - spark.sql.streaming.checkpointLocation=s3a://polyhorizon-streamingdata/checkpoints/
+      - local:///opt/spark/jobs/streaming_job.py
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import json,urllib.request; apps=json.load(urllib.request.urlopen('http://spark-master:8080/json/')); print(any(app.get('name')=='polyhorizon-streaming-job' for app in apps.get('activeapps', [])))\" | grep True",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+
+# -----------------------
+# Prometheus and Grafana
+# -----------------------
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    networks: [ml-platform]
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/dashboards/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [ml-platform]
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager
+    ports:
+      - "9095:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ${ALERTMANAGER_SLACK_WEBHOOK_FILE:-./monitoring/secrets/alertmanager_slack_url.example}:/run/secrets/alertmanager_slack_url:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    networks: [ml-platform]
+    restart: unless-stopped
+
+  prometheus-pushgateway:
+    image: prom/pushgateway:v1.11.1
+    container_name: prometheus-pushgateway
+    ports:
+      - "9091:9091"
+    networks: [ml-platform]
+    restart: unless-stopped
+    command: ["--persistence.file=/data/metrics", "--persistence.interval=5m"]
+    volumes:
+      - pushgateway_data:/data
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      CONTAINERS: 1
+      EVENTS: 1
+      INFO: 1
+      NETWORKS: 1
+      PING: 1
+      SERVICES: 1
+      VERSION: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [ml-platform]
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.2
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks: [ml-platform]
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.16.1
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./monitoring/alloy.config:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on:
+      - docker-socket-proxy
+      - loki
+    networks: [ml-platform]
+    restart: unless-stopped
+
+
+  # --------------------
+  # Prefect Server
+  # --------------------
+  prefect-server:
+    build:
+      context: .
+      dockerfile: docker/prefect/Dockerfile
+    container_name: prefect
+    command: prefect server start
+    ports:
+      - "4200:4200"
+    volumes:
+      - prefect_data:/root/.prefect
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_SERVER_DATABASE_CONNECTION_URL: postgresql+asyncpg://${POSTGRES_PREFECT_USER}:${POSTGRES_PREFECT_PASSWORD}@postgres:5432/${POSTGRES_PREFECT_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [ml-platform]
+
+  prefect-worker:
+    build:
+      context: .
+      dockerfile: docker/prefect/Dockerfile
+    container_name: prefect-worker
+    command: prefect worker start --pool training-docker-pool --type docker
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_LOGGING_LEVEL: INFO
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prefect-server:
+        condition: service_started
+    networks: [ml-platform]
+
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.4.10
+    ports:
+      - "8085:8081"
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-broker-1:29092
+    networks: [ml-platform]
+
+
+  vault:
+    image: hashicorp/vault:latest
+    cap_add: [IPC_LOCK]
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+    networks: [ml-platform]
+
+
+  # --------------------
+  # Model Serving
+  # --------------------
+  # model-serving:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/serving/Dockerfile
+  #   container_name: model-serving
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     SERVING_CONFIG_PATH: /app/polyhorizon/serving/configs/serving_config.yaml
+  #     FEAST_REPO_PATH: /app/polyhorizon/features/feature_repo
+  #     FEAST_STORE_YAML: /app/polyhorizon/features/feature_repo/feature_store.yaml
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     mlflow:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost:8000/v1/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 15s
+  #   networks: [ml-platform]
+
+  # --------------------
+  # Model Serving + Frontend
+  # --------------------
+  model-serving:
+    build:
+      context: .
+      dockerfile: docker/serving/Dockerfile
+    image: polyhorizon-serving:local
+    container_name: model-serving
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      FEAST_REPO_PATH: /app/polyhorizon/features/feature_repo
+      FEAST_STORE_YAML: /app/polyhorizon/features/feature_repo/feature_store.yaml
+      SERVING_CONFIG_PATH: /app/polyhorizon/serving/configs/serving_config.yaml
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      MLFLOW_S3_ENDPOINT_URL: http://seaweedfs-s3:8333
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+      seaweedfs-bucket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/v1/health/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks: [ml-platform]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${FRONTEND_API_BASE_URL:-http://localhost:8000}
+    image: polyhorizon-frontend:local
+    container_name: polyhorizon-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      model-serving:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [ml-platform]
+
+
+  # --------------------
+  # Frontend
+  # --------------------
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/frontend/Dockerfile
+  #     args:
+  #       VITE_API_BASE_URL: ${FRONTEND_API_BASE_URL}
+  #   container_name: polyhorizon-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5173:80"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
+  #   networks: [ml-platform]

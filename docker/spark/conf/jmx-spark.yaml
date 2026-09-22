@@ -1,0 +1,4 @@
+rules:
+  - pattern: "org.apache.spark<type=(.+), name=(.+)><>(.+)"
+  - pattern: "java.lang<type=GarbageCollector,name=(.+)><>CollectionCount"
+  - pattern: "java.lang<type=Memory><HeapMemoryUsage>(.+)"

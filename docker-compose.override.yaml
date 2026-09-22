@@ -1,0 +1,56 @@
+services:
+  prefect-worker-serving:
+    image: prefecthq/prefect:3-python3.11
+    container_name: prefect-worker-serving
+    command: prefect worker start --pool serving-docker-pool --type docker
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_LOGGING_LEVEL: INFO
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prefect-server:
+        condition: service_started
+    networks: [ml-platform]
+
+  prefect-worker-monitoring:
+    image: prefecthq/prefect:3-python3.11
+    container_name: prefect-worker-monitoring
+    command: prefect worker start --pool monitoring-docker-pool --type docker
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_LOGGING_LEVEL: INFO
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prefect-server:
+        condition: service_started
+    networks: [ml-platform]
+
+  prefect-worker-ingestion:
+    image: prefecthq/prefect:3-python3.11
+    container_name: prefect-worker-ingestion
+    command: prefect worker start --pool ingestion-docker-pool --type docker
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_LOGGING_LEVEL: INFO
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prefect-server:
+        condition: service_started
+    networks: [ml-platform]
+
+  prefect-worker-features:
+    image: prefecthq/prefect:3-python3.11
+    container_name: prefect-worker-features
+    command: prefect worker start --pool features-docker-pool --type docker
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_LOGGING_LEVEL: INFO
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prefect-server:
+        condition: service_started
+    networks: [ml-platform]
