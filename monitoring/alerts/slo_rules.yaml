@@ -1,0 +1,49 @@
+groups:
+  - name: serving.slo.recording
+    interval: 30s
+    rules:
+      - record: serving:requests:rate5m
+        expr: sum(rate(serving_requests_total[5m]))
+
+      - record: serving:errors:ratio5m
+        expr: |
+          sum(rate(serving_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(serving_requests_total[5m])), 0.001)
+
+      - record: serving:errors:ratio1h
+        expr: |
+          sum(rate(serving_requests_total{status=~"5.."}[1h]))
+          /
+          clamp_min(sum(rate(serving_requests_total[1h])), 0.001)
+
+      - record: serving:latency:p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(serving_request_latency_seconds_bucket[5m])) by (le)
+          )
+
+  - name: serving.slo.alerts
+    rules:
+      - alert: ServingAvailabilityErrorBudgetBurn
+        expr: serving:errors:ratio5m > 0.05 and serving:errors:ratio1h > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          service: serving
+          category: serving-slo
+        annotations:
+          summary: "Serving API is burning its availability error budget"
+          description: "Both the five-minute and one-hour error ratios exceed their SLO burn thresholds."
+
+      - alert: ServingLatencySLOBreach
+        expr: serving:latency:p95_5m > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: serving
+          category: serving-slo
+        annotations:
+          summary: "Serving p95 latency exceeds one second"
+          description: "Forecast serving latency has exceeded the p95 objective for ten minutes."

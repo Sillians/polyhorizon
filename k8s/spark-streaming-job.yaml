@@ -1,0 +1,75 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: polyhorizon-streaming-job
+  namespace: spark-jobs
+spec:
+  type: Python
+  mode: cluster
+  image: your-registry/spark-custom:3.5.7
+  imagePullPolicy: Always
+  mainApplicationFile: local:///opt/spark/jobs/streaming_job.py
+  sparkVersion: "3.5.7"
+  
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 3
+    onFailureRetryInterval: 60
+    onSubmissionFailureRetries: 3
+    onSubmissionFailureRetryInterval: 30
+  
+  driver:
+    cores: 1
+    memory: "2g"
+    labels:
+      version: 3.5.7
+    serviceAccount: spark-driver
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: access-key-id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: secret-access-key
+      - name: SPARK_LOG_LEVEL
+        value: "WARN"
+  
+  executor:
+    cores: 2
+    instances: 2
+    memory: "2g"
+    labels:
+      version: 3.5.7
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: access-key-id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: secret-access-key
+  
+  sparkConf:
+    "spark.sql.streaming.checkpointLocation": "s3a://polyhorizon-streamingdata/checkpoints/"
+    "spark.hadoop.fs.s3a.endpoint": "http://seaweedfs-s3.ml-platform.svc.cluster.local:8333"
+    "spark.hadoop.fs.s3a.path.style.access": "true"
+    "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem"
+    "spark.hadoop.fs.s3a.connection.ssl.enabled": "false"
+    "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+    "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension"
+    "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+    "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
+    
+  monitoring:
+    exposeDriverMetrics: true
+    exposeExecutorMetrics: true
+    prometheus:
+      jmxExporterJar: "/opt/spark/jmx/jmx_prometheus_javaagent.jar"
+      port: 8090

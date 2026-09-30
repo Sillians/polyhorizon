@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import time
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
@@ -11,7 +12,6 @@ from urllib.parse import urlparse
 import boto3
 import websockets
 from kafka import KafkaProducer
-from kafka.errors import KafkaError
 
 from polyhorizon.ingestion.configs.settings import Config, load_config
 from polyhorizon.ingestion.utils.logger import get_logger, log_execution_time, log_function_call
@@ -44,6 +44,8 @@ class ProducerRuntimeConfig:
     seaweed_access_key: str
     seaweed_secret_key: str
     metrics_interval: int
+    trade_stale_seconds: float = 120.0
+    recovery_seconds: float = 60.0
 
     @classmethod
     def from_settings(cls, settings: Config) -> "ProducerRuntimeConfig":
@@ -80,6 +82,8 @@ class ProducerRuntimeConfig:
             seaweed_access_key=bucket.seaweedfs_access_key.get_secret_value(),
             seaweed_secret_key=bucket.seaweedfs_secret_key.get_secret_value(),
             metrics_interval=monitoring.metrics_interval,
+            trade_stale_seconds=finnhub.trade_stale_seconds,
+            recovery_seconds=finnhub.recovery_seconds,
         )
 
 
@@ -113,6 +117,8 @@ class FinnhubProducer:
         self._messages_received = 0
         self._messages_sent = 0
         self._last_message_time = 0.0
+        self._last_trades: Dict[str, float] = {}
+        self._session_healthy = False
 
         self._symbols: List[str] = []
         self._initialize()
@@ -177,6 +183,10 @@ class FinnhubProducer:
         )
         self._connection_start_time = time.time()
         self._messages_received = 0
+        self._session_started = time.monotonic()
+        self._last_trades = {}
+        self._session_healthy = False
+        self._subscribed_symbols.clear()
         self.logger.info("WebSocket connected")
 
     async def _subscribe_to_symbols(self, symbols: List[str]) -> None:
@@ -213,6 +223,9 @@ class FinnhubProducer:
             await self._handle_ping_message()
         elif message_type == "trade":
             await self._handle_trade_message(message)
+        elif message_type == "error":
+            # Do not echo provider payloads; they may contain credentials.
+            raise RuntimeError("Finnhub reported a provider error")
 
     async def _handle_ping_message(self) -> None:
         if self._websocket:
@@ -231,7 +244,7 @@ class FinnhubProducer:
         volume = trade_data.get("v") or trade_data.get("size")
         timestamp = trade_data.get("t") or trade_data.get("timestamp")
 
-        if not symbol or price is None:
+        if symbol not in self._symbols or price is None:
             return
 
         enriched_trade = {
@@ -245,16 +258,23 @@ class FinnhubProducer:
             "connection_id": id(self._websocket),
         }
 
+        if (not math.isfinite(enriched_trade["price"]) or enriched_trade["price"] <= 0
+                or not math.isfinite(enriched_trade["volume"]) or enriched_trade["volume"] <= 0
+                or not timestamp or enriched_trade["timestamp"] <= 0):
+            return
+
         await self._send_to_kafka(symbol, enriched_trade)
+        self._last_trades[symbol] = time.monotonic()
 
     async def _send_to_kafka(self, key: str, message: Dict[str, Any]) -> None:
+        def deliver():
+            future = self._producer.send(self.config.kafka_topic, key=key, value=message)
+            future.get(timeout=30)
         try:
-            self._producer.send(self.config.kafka_topic, key=key, value=message)
-            self._messages_sent += 1
-        except KafkaError as e:
-            self.logger.error("Kafka send error: %s", e)
-        except Exception as e:
-            self.logger.error("Unexpected error sending to Kafka: %s", e)
+            await asyncio.to_thread(deliver)
+        except Exception:
+            raise RuntimeError("Kafka delivery failed or acknowledgement timed out") from None
+        self._messages_sent += 1
 
     def _log_health_metrics(self) -> None:
         if self._connection_start_time <= 0:
@@ -271,9 +291,12 @@ class FinnhubProducer:
 
     async def _run_websocket_loop(self) -> None:
         try:
-            async for raw_message in self._websocket:
-                if not self._is_running:
-                    break
+            while self._is_running:
+                self._check_trade_freshness()
+                try:
+                    raw_message = await asyncio.wait_for(self._websocket.recv(), timeout=5)
+                except asyncio.TimeoutError:
+                    continue
                 await self._handle_websocket_message(raw_message)
                 if self._messages_received % self.config.metrics_interval == 0:
                     self._log_health_metrics()
@@ -287,33 +310,51 @@ class FinnhubProducer:
             )
             raise
 
+    def _check_trade_freshness(self):
+        now = time.monotonic()
+        stale = [s for s in self._symbols if now - self._last_trades.get(s, self._session_started)
+                 >= self.config.trade_stale_seconds]
+        if stale:
+            self.logger.error("Trade freshness failed for symbols: %s", ", ".join(stale))
+            raise RuntimeError("No acknowledged trades within freshness limit for: " + ", ".join(stale))
+        if (all(s in self._last_trades for s in self._symbols)
+                and now - self._session_started >= self.config.recovery_seconds):
+            self._session_healthy = True
+
     async def _handle_connection_with_retries(self) -> None:
         retry_count = 0
         while retry_count < self.config.max_retries and self._is_running:
+            self._session_healthy = False
+            delay = self.config.connection_retry_delay
             try:
                 await self._connect_websocket()
                 await self._subscribe_to_symbols(self._symbols)
                 await self._run_websocket_loop()
-                retry_count = 0
-            except websockets.exceptions.InvalidStatus as e:
-                if "401" in str(e):
-                    self.logger.error("Authentication failed (HTTP 401). Check FINNHUB_TOKEN.")
-                    break
-                if "429" in str(e):
-                    retry_count += 1
-                    await asyncio.sleep(self.config.rate_limit_delay)
-                else:
-                    retry_count += 1
-                    await asyncio.sleep(self.config.connection_retry_delay * retry_count)
-            except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.WebSocketException):
-                retry_count += 1
-                await asyncio.sleep(self.config.connection_retry_delay * retry_count)
-            except Exception:
-                retry_count += 1
-                await asyncio.sleep(self.config.connection_retry_delay * retry_count)
+                if not self._is_running:
+                    return
+                raise RuntimeError("Finnhub session ended unexpectedly")
+            except Exception as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status in (401, 403):
+                    raise RuntimeError("Finnhub authentication rejected") from None
+                retry_count = 1 if self._session_healthy else retry_count + 1
+                self.logger.warning("Producer connection failed (%s); attempt %d/%d",
+                                    type(exc).__name__, retry_count, self.config.max_retries)
+                if status == 429:
+                    delay = self.config.rate_limit_delay
+            finally:
+                if self._websocket:
+                    try:
+                        await self._websocket.close()
+                    except Exception:
+                        self.logger.warning("WebSocket cleanup failed")
+                    self._websocket = None
+                self._subscribed_symbols.clear()
+            if retry_count < self.config.max_retries and self._is_running:
+                await asyncio.sleep(min(delay * retry_count, 300))
 
         if retry_count >= self.config.max_retries:
-            self.logger.error("Max retries exceeded. Stopping.")
+            raise RuntimeError("Producer reconnect budget exhausted")
 
     @log_execution_time
     async def start(self) -> None:
@@ -345,8 +386,8 @@ class FinnhubProducer:
             if self._websocket:
                 await self._websocket.close()
             if self._producer:
-                self._producer.flush(timeout=5)
-                self._producer.close()
+                await asyncio.to_thread(self._producer.flush, timeout=5)
+                await asyncio.to_thread(self._producer.close, timeout=5)
             if self._connection_start_time > 0:
                 self._log_health_metrics()
             self.logger.info("FinnhubProducer stopped successfully")
@@ -367,6 +408,8 @@ class FinnhubProducer:
         return {
             "messages_received": self._messages_received,
             "messages_sent": self._messages_sent,
+            "symbol_trade_age_seconds": {s: time.monotonic() - self._last_trades.get(
+                s, getattr(self, "_session_started", time.monotonic())) for s in self._symbols},
             "uptime_seconds": uptime,
             "message_rate": self._messages_received / uptime if uptime > 0 else 0,
             "subscribed_symbols_count": len(self._subscribed_symbols),

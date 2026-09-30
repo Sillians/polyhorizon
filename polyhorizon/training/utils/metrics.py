@@ -4,7 +4,7 @@ import math
 import time
 from typing import Dict, Optional
 
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+from prometheus_client import CollectorRegistry, Gauge, pushadd_to_gateway
 
 from polyhorizon.training.configs.settings import MonitoringConfig
 from polyhorizon.training.utils.logger import get_logger
@@ -25,7 +25,7 @@ class TrainingMetricsPublisher:
                 gauge.labels(**labels).set(value)
             else:
                 gauge.set(value)
-            push_to_gateway(self.config.pushgateway_url, job="training", registry=registry)
+            pushadd_to_gateway(self.config.pushgateway_url, job="training", registry=registry)
         except Exception:
             self.logger.warning("Failed to push metric %s to Pushgateway", name, exc_info=True)
 

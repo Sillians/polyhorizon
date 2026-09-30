@@ -1,0 +1,29 @@
+name: polyhorizon-publication-test
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_PASSWORD: publication-test-only
+      POSTGRES_DB: publication_test
+    ports: ["127.0.0.1:15432:5432"]
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d publication_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  redis:
+    image: redis:7.2-alpine
+    ports: ["127.0.0.1:16379:6379"]
+    command: [redis-server, --save, "", --appendonly, "no"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  seaweed:
+    image: chrislusf/seaweedfs@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    command: [server, -s3, -s3.config=/etc/seaweedfs/test-s3.json, -ip=seaweed, -volume.max=20, -master.volumeSizeLimitMB=100]
+    volumes:
+      - ./s3.json:/etc/seaweedfs/test-s3.json:ro
+    ports: ["127.0.0.1:18333:8333"]

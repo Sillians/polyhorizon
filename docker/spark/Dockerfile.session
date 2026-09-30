@@ -1,0 +1,6 @@
+# Local source-only qualification image; dependency changes require a base rebuild.
+FROM spark-custom:3.5.7
+USER root
+COPY --chown=spark:spark polyhorizon /opt/app/polyhorizon
+USER spark
+RUN /opt/app/.venv/bin/python -c "from polyhorizon.core.session_qualification import qualify_session, qualify_trades; from polyhorizon.streaming.tasks.spark_streaming_flow import spark_streaming_flow; assert spark_streaming_flow.fn.__defaults__[-1] is True"

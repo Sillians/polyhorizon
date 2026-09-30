@@ -1,0 +1,121 @@
+# Local-only overlay. Requires Compose 2.24+ (!override). No production defaults changed.
+# Use with docker-compose.yaml and docker-compose.local-workers.yaml.
+services:
+  kafka-broker-1:
+    mem_limit: 768m
+    environment: &kafka-small
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx384m
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_NUM_NETWORK_THREADS: 2
+      KAFKA_NUM_IO_THREADS: 4
+  kafka-broker-2:
+    mem_limit: 768m
+    environment: *kafka-small
+  kafka-broker-3:
+    profiles: [kafka-migration]
+  kafka-init:
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-broker-1:29092,kafka-broker-2:29093
+      KAFKA_EXPECTED_BROKERS: 2
+      TOPIC_REPLICATION_FACTOR: 2
+    depends_on: !override
+      kafka-broker-1: {condition: service_healthy}
+      kafka-broker-2: {condition: service_healthy}
+  zookeeper:
+    mem_limit: 256m
+    environment:
+      KAFKA_HEAP_OPTS: -Xms64m -Xmx128m
+  postgres:
+    mem_limit: 384m
+    command: postgres -c shared_buffers=96MB -c work_mem=4MB -c max_connections=60
+  master:
+    mem_limit: 192m
+  volume:
+    mem_limit: 256m
+  filer:
+    mem_limit: 384m
+    environment:
+      GOMEMLIMIT: 256MiB
+  seaweedfs-s3:
+    mem_limit: 192m
+  prometheus-pushgateway:
+    mem_limit: 64m
+  spark-master:
+    mem_limit: 384m
+    environment:
+      SPARK_DAEMON_MEMORY: 128m
+    depends_on: !override
+      kafka-broker-1: {condition: service_healthy}
+      kafka-broker-2: {condition: service_healthy}
+  spark-worker:
+    mem_limit: 1536m
+    deploy:
+      replicas: 1
+    environment:
+      SPARK_DAEMON_MEMORY: 128m
+      SPARK_WORKER_MEMORY: 768m
+      SPARK_WORKER_CORES: 1
+  spark-submit:
+    mem_limit: 1536m
+    image: spark-custom:low-memory-local
+    environment:
+      POLYHORIZON_LOW_MEMORY: "1"
+      KAFKA_SERVERS: kafka-broker-1:29092,kafka-broker-2:29093
+    command:
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - --name
+      - Polyhorizon_streaming_job
+      - --driver-memory
+      - 768m
+      - --executor-memory
+      - 768m
+      - --total-executor-cores
+      - "1"
+      - --executor-cores
+      - "1"
+      - /opt/spark/jobs/streaming_job.py
+  prefect-server:
+    mem_limit: 512m
+  local-worker-ingestion:
+    mem_limit: 256m
+  local-worker-streaming:
+    mem_limit: 256m
+  local-worker-features:
+    profiles: [optional]
+  redis:
+    profiles: [optional]
+  prometheus:
+    profiles: [optional]
+  grafana:
+    profiles: [optional]
+  alertmanager:
+    profiles: [optional]
+  postgres-exporter:
+    profiles: [optional]
+  pgadmin:
+    profiles: [optional]
+  mlflow:
+    profiles: [optional]
+  docker-socket-proxy:
+    profiles: [optional]
+  loki:
+    profiles: [optional]
+  alloy:
+    profiles: [optional]
+  prefect-worker:
+    profiles: [optional]
+  schema-registry:
+    profiles: [optional]
+  vault:
+    profiles: [optional]
+  model-serving:
+    profiles: [optional]
+  frontend:
+    profiles: [optional]

@@ -59,6 +59,7 @@ class ModelRegistryClient:
             for version in versions
             if str(getattr(version, "status", "READY")).upper() == "READY"
             and (getattr(version, "tags", {}) or {}).get("governance_qualification") == "passed-v1"
+            and (getattr(version, "tags", {}) or {}).get("session_qualification") == "nyse-full-session-v1"
         ]
         if not ready:
             raise RuntimeError(
@@ -93,8 +94,13 @@ class ModelRegistryClient:
         return version
 
     def load_champion(self) -> ModelHandle:
-        registry = self.config.model_registry.name
         version = self.ensure_champion_alias()
+        return self.load_version(version)
+
+    def load_version(self, version: str) -> ModelHandle:
+        """Load and validate an exact registry version without moving an alias."""
+        version = str(version)
+        registry = self.config.model_registry.name
 
         # Pin the load to the resolved version so an alias move during startup
         # cannot produce mismatched model/version metadata.

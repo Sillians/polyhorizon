@@ -1,0 +1,97 @@
+{
+  "id": null,
+  "uid": "serving-overview",
+  "title": "Serving Overview",
+  "tags": ["serving"],
+  "timezone": "browser",
+  "schemaVersion": 37,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request Rate",
+      "gridPos": {"x": 0, "y": 0, "w": 8, "h": 6},
+      "targets": [
+        {
+          "expr": "sum(rate(serving_requests_total[5m]))",
+          "legendFormat": "req/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "reqps"},
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rate (5xx)",
+      "gridPos": {"x": 8, "y": 0, "w": 8, "h": 6},
+      "targets": [
+        {
+          "expr": "sum(rate(serving_requests_total{status=~\"5..\"}[5m])) / sum(rate(serving_requests_total[5m])) * 100",
+          "legendFormat": "error %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "percent"},
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p95",
+      "gridPos": {"x": 16, "y": 0, "w": 8, "h": 6},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(serving_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "s"},
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache Hit Ratio",
+      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 6},
+      "targets": [
+        {
+          "expr": "sum(rate(serving_cache_hits_total[5m])) / (sum(rate(serving_cache_hits_total[5m])) + sum(rate(serving_cache_misses_total[5m]))) * 100",
+          "legendFormat": "hit %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "percent"},
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Model Loads",
+      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 6},
+      "targets": [
+        {
+          "expr": "increase(serving_model_loads_total[30m])",
+          "legendFormat": "loads/30m",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "id": null,
+  "uid": "polyhorizon-mission-control",
+  "title": "PolyHorizon Mission Control",
+  "description": "Live telemetry overview. No-data means unmeasured or unavailable, never healthy. Exact dataset/model evidence and operator actions are in /ops.",
+  "tags": ["polyhorizon", "operations", "mission-control"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "links": [
+    {"title": "Serving", "type": "link", "url": "/d/serving-overview", "targetBlank": false},
+    {"title": "Features", "type": "link", "url": "/d/features-overview", "targetBlank": false},
+    {"title": "Training", "type": "link", "url": "/d/training-overview", "targetBlank": false},
+    {"title": "Ingestion", "type": "link", "url": "/d/ingestion-health", "targetBlank": false}
+  ],
+  "panels": [
+    {
+      "id": 1, "type": "text", "title": "Operating contract", "gridPos": {"x": 0, "y": 0, "w": 24, "h": 3},
+      "options": {"mode": "markdown", "content": "**Signal is not proof of a forecast.** Green scrape targets only show connectivity. Use the operator-only `/ops` overview for exact publication, missing-bar, online/offline, and model-version evidence. No-data is unknown; realized forecast accuracy and fleet-wide activation are not yet instrumented."
+      }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Active warning / critical alerts", "gridPos": {"x": 0, "y": 3, "w": 6, "h": 4},
+      "targets": [{"expr": "sum(ALERTS{alertstate=\"firing\",severity=~\"warning|critical\"}) or vector(0)", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Serving matches champion (sampled process)", "gridPos": {"x": 6, "y": 3, "w": 6, "h": 4},
+      "targets": [{"expr": "min(serving_champion_match)", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Latest feature publication succeeded", "gridPos": {"x": 12, "y": 3, "w": 6, "h": 4},
+      "targets": [{"expr": "max(features_publication_success)", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 5, "type": "stat", "title": "Published event age", "gridPos": {"x": 18, "y": 3, "w": 6, "h": 4},
+      "targets": [{"expr": "time() - max(features_last_published_event_timestamp_seconds)", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "s", "decimals": 0}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Forecast request rate", "gridPos": {"x": 0, "y": 7, "w": 8, "h": 7},
+      "targets": [{"expr": "sum(rate(serving_requests_total{endpoint=\"/v1/forecast\"}[5m]))", "legendFormat": "forecast requests/s", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}, "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Forecast refusals and errors", "gridPos": {"x": 8, "y": 7, "w": 8, "h": 7},
+      "targets": [
+        {"expr": "sum(rate(serving_forecast_stale_rejections_total[5m]))", "legendFormat": "stale features/s", "refId": "A"},
+        {"expr": "sum(rate(serving_requests_total{endpoint=\"/v1/forecast\",status=~\"5..\"}[5m]))", "legendFormat": "forecast 5xx/s", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}, "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Forecast p95 latency", "gridPos": {"x": 16, "y": 7, "w": 8, "h": 7},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(serving_request_latency_seconds_bucket{endpoint=\"/v1/forecast\"}[5m])) by (le))", "legendFormat": "p95", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}, "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Ingestion producer and consumer rates", "gridPos": {"x": 0, "y": 14, "w": 8, "h": 7},
+      "targets": [
+        {"expr": "ingestion_producer_message_rate", "legendFormat": "producer", "refId": "A"},
+        {"expr": "ingestion_consumer_consume_rate", "legendFormat": "consumer", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}, "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Streaming Kafka lag", "gridPos": {"x": 8, "y": 14, "w": 8, "h": 7},
+      "targets": [{"expr": "sum(polyhorizon_streaming_kafka_lag)", "legendFormat": "offsets", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Latest-session interior bar gaps", "description": "Gaps between observed bars; missing leading bars require /ops inspection.", "gridPos": {"x": 16, "y": 14, "w": 8, "h": 7},
+      "targets": [{"expr": "features_interior_session_gaps", "legendFormat": "{{symbol}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 12, "type": "stat", "title": "Last training run succeeded", "gridPos": {"x": 0, "y": 21, "w": 6, "h": 4},
+      "targets": [{"expr": "max(training_last_run_success)", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 13, "type": "stat", "title": "Last flow activated challenger", "gridPos": {"x": 6, "y": 21, "w": 6, "h": 4},
+      "targets": [{"expr": "max(training_promotion_success)", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 14, "type": "stat", "title": "Core scrape targets up", "description": "Counts healthy Prometheus scrape targets; not a user forecast check.", "gridPos": {"x": 12, "y": 21, "w": 6, "h": 4},
+      "targets": [{"expr": "sum(up{job=~\"model-serving|postgres|pushgateway|traefik\"})", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "id": 15, "type": "stat", "title": "Training run age", "gridPos": {"x": 18, "y": 21, "w": 6, "h": 4},
+      "targets": [{"expr": "time() - max(training_last_run_timestamp)", "refId": "A", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "id": 16, "type": "text", "title": "Coverage limits and next drill-down", "gridPos": {"x": 0, "y": 25, "w": 24, "h": 4},
+      "options": {"mode": "markdown", "content": "**Not measured here:** realized return/price error, empirical interval coverage, full feature-vector parity, and replica-wide activation. These need durable forecast/outcome and replica-inventory feeds. For exact symbol gaps, publication IDs, online/offline close, and registry qualification, open `/ops`. Use the linked component dashboards for time-series drill-down; no-data must be investigated, not interpreted as zero."
+      }
+    }
+  ]
+}

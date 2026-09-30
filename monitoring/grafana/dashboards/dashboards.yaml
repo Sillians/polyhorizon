@@ -1,0 +1,65 @@
+apiVersion: 1
+
+providers:
+  - name: PolyHorizon
+    orgId: 1
+    folder: PolyHorizon
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/polyhorizon
+
+  - name: Spark
+    orgId: 1
+    folder: Spark
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/spark
+
+  - name: Kafka
+    orgId: 1
+    folder: Kafka
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/kafka
+
+  - name: Ingestion
+    orgId: 1
+    folder: Ingestion
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/ingestion
+
+  - name: Serving
+    orgId: 1
+    folder: Serving
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/serving
+
+  - name: Features
+    orgId: 1
+    folder: Features
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/features
+
+  - name: Training
+    orgId: 1
+    folder: Training
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/training

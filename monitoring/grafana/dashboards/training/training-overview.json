@@ -1,0 +1,82 @@
+{
+  "id": null,
+  "uid": "training-overview",
+  "title": "Training Overview",
+  "tags": ["training"],
+  "timezone": "browser",
+  "schemaVersion": 37,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Last Run Duration (s)",
+      "gridPos": {"x": 0, "y": 0, "w": 8, "h": 6},
+      "targets": [
+        {"expr": "training_last_run_duration_seconds", "legendFormat": "duration", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Last Run Success",
+      "gridPos": {"x": 8, "y": 0, "w": 8, "h": 6},
+      "targets": [
+        {"expr": "training_last_run_success", "legendFormat": "success", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Validation Loss",
+      "gridPos": {"x": 16, "y": 0, "w": 8, "h": 6},
+      "targets": [
+        {"expr": "training_val_loss", "legendFormat": "val_loss", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Challenger Hit Rate",
+      "gridPos": {"x": 0, "y": 6, "w": 8, "h": 6},
+      "targets": [
+        {"expr": "training_challenger_hit_rate", "legendFormat": "hit_rate", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Challenger MAE",
+      "gridPos": {"x": 8, "y": 6, "w": 8, "h": 6},
+      "targets": [
+        {"expr": "training_challenger_mae", "legendFormat": "mae", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Improvement vs Champion",
+      "gridPos": {"x": 16, "y": 6, "w": 8, "h": 6},
+      "targets": [
+        {"expr": "training_improvement_pct", "legendFormat": "improvement", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Promotion Success",
+      "gridPos": {"x": 0, "y": 12, "w": 24, "h": 5},
+      "targets": [
+        {"expr": "training_promotion_success", "legendFormat": "promoted", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}, "tooltip": {"mode": "single"}}
+    }
+  ]
+}

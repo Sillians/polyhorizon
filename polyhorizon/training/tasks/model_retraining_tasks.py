@@ -18,6 +18,10 @@ def drift_detection_task(config: Config) -> Tuple[bool, Any, Dict[str, Any]]:
     
     # 2. Run analysis
     drift_payload = detector.run_full_suite(ref_df, cur_df)
+    if any(result.get("status") != "ok" for result in drift_payload["symbol_results"].values()):
+        raise ValueError("Drift assessment is inconclusive: insufficient symbol samples")
+    if drift_payload["target_drift"].get("status") != "ok":
+        raise ValueError("Target drift assessment is inconclusive: insufficient target samples")
     
     # 3. Decision Logic:
     # Retrain if more than X% of symbols drift

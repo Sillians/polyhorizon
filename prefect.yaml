@@ -1,0 +1,221 @@
+version: 2.0
+
+deployments:
+  - name: sp500-universe-weekdays
+    version: "${IMAGE_TAG}"
+    tags: [production, universe, pre-market]
+    description: Validate and activate the point-in-time S&P 500 universe before ingestion.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/sp500_data/flow.py:sp500_universe_flow
+    parameters:
+      config_path: null
+    schedule:
+      cron: "0 7 * * 1-5"
+      timezone: "America/New_York"
+    work_pool:
+      name: ingestion-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/ingestion:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/app"
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform
+
+  - name: ingestion-market-hours
+    version: "${IMAGE_TAG}"
+    tags: [production, ingestion, market-hours]
+    description: Run Finnhub ingestion during US market hours.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/ingestion/flow/producer_consumer_streaming_flow.py:finnhub_ingestion_flow
+    parameters:
+      config_path: null
+    schedule:
+      cron: "30 9 * * 1-5"
+      timezone: "America/New_York"
+    work_pool:
+      name: ingestion-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/ingestion:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/app"
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform
+
+  - name: streaming-market-hours
+    version: "${IMAGE_TAG}"
+    tags: [production, streaming, market-hours]
+    description: Start Spark streaming job at US market open; skips holidays.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/streaming/tasks/spark_streaming_flow.py:spark_streaming_flow
+    parameters:
+      job_name: polyhorizon-streaming-job
+    schedule:
+      cron: "30 9 * * 1-5"
+      timezone: "America/New_York"
+    work_pool:
+      name: streaming-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/spark-streaming:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/opt/app"
+          STREAMING_SPARK_IMAGE: ghcr.io/${GITHUB_REPOSITORY}/spark-streaming:${IMAGE_TAG}
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform
+
+  - name: streaming-health-hourly
+    version: "${IMAGE_TAG}"
+    tags: [production, streaming, health]
+    description: Hourly health check that restarts streaming if it stops mid-session.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/streaming/tasks/spark_streaming_flow.py:spark_streaming_health_flow
+    parameters:
+      job_name: polyhorizon-streaming-job
+    schedule:
+      cron: "0 * * * *"
+      timezone: "America/New_York"
+    work_pool:
+      name: streaming-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/spark-streaming:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/opt/app"
+          STREAMING_SPARK_IMAGE: ghcr.io/${GITHUB_REPOSITORY}/spark-streaming:${IMAGE_TAG}
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform
+
+  - name: feature-store-after-close
+    version: "${IMAGE_TAG}"
+    tags: [production, features, post-close]
+    description: Publish a completed version-pinned feature dataset; triggered by Gold completion.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/features/flow/feature_store_flow.py:feature_store_flow
+    parameters:
+      apply_changes: true
+      materialize: true
+    schedules: []
+    work_pool:
+      name: features-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/features:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/app"
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform
+
+  - name: feature-store-quality-nightly
+    version: "${IMAGE_TAG}"
+    tags: [production, features, quality]
+    description: Nightly data quality + drift checks for feature store.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/features/flow/feature_store_quality_flow.py:feature_store_quality_flow
+    parameters:
+      run_drift_check: true
+    schedule:
+      cron: "0 1 * * *"
+      timezone: "America/New_York"
+    work_pool:
+      name: features-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/features:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/app"
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform
+
+
+  - name: training-quarterly
+    version: "${IMAGE_TAG}"
+    tags: [production, training, scheduled]
+    description: Quarterly full retrain (every 3 months).
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/training/flow/model_training_flow.py:model_training_flow
+    parameters:
+      run_tuning: false
+    schedule:
+      cron: "0 2 1 */3 *"
+      timezone: "UTC"
+    work_pool:
+      name: training-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/training:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/app"
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform
+  
+  - name: retraining-drift
+    version: "${IMAGE_TAG}"
+    tags: [production, training, drift]
+    description: Drift detection every 30 days with conditional retrain.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/training/flow/model_retraining_flow.py:model_retraining_flow
+    parameters:
+      run_tuning: false
+    schedule:
+      interval: 2592000 #seconds
+      anchor_date: "2026-01-01T00:00:00Z"
+      timezone: "UTC"
+    work_pool:
+      name: training-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/training:${IMAGE_TAG}
+        env:
+          PYTHONPATH: "/app"
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+        image_pull_policy: Always
+        auto_remove: true
+        networks:
+          - ml-platform

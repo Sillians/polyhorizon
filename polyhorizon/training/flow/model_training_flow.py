@@ -14,6 +14,7 @@ from polyhorizon.training.tasks.model_training_tasks import (
     compare_and_promote_task,
 )
 from polyhorizon.training.tasks.model_activation_tasks import activate_champion_task
+from polyhorizon.training.src.governance.promotion_email_alert import send_promotion_alert
 from polyhorizon.training.utils.feature_lineage import (
     fetch_feature_lineage,
     log_feature_lineage_mlflow,
@@ -88,7 +89,17 @@ def model_training_flow(
             activation_result = activate_champion_task(
                 promotion_result=promotion_result,
                 model_metadata=model_metadata,
+                config=config,
             )
+            promotion_result["promoted"] = activation_result["status"] == "activated"
+            if promotion_result["promoted"]:
+                challenger_metrics = promotion_result["challenger_metrics"]
+                send_promotion_alert(model_metadata=model_metadata, config=config, metrics={
+                    "challenger_hit_rate": challenger_metrics["hit_rate"],
+                    "challenger_mae": challenger_metrics["mae"],
+                    "improvement_pct": float(promotion_result["improvement"] or 0.0),
+                    "stability": challenger_metrics.get("stability"),
+                })
 
             success = True
             logger.info("Training flow complete.")

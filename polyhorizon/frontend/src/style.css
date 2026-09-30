@@ -28,6 +28,8 @@ button {
 button:hover:not(:disabled) {
   background:#104b40
 }
+.button-link { display:inline-flex; align-items:center; padding:10px 15px; border:1px solid #9faea4; border-radius:6px; text-decoration:none; font-weight:650; min-height:44px }
+.button-link:hover { background:#e5e9df }
 button:disabled {
   opacity:.48;
   cursor:not-allowed
@@ -460,6 +462,16 @@ footer {
 .ops-grid button {
   margin:14px 8px 0 0
 }
+.ops-gate { margin-top:20px }
+.ops-gate h3 { margin:0 0 8px }
+.ops-gate h3[data-tone="warning"] { color:#9b4d18 }
+.ops-gate h3[data-tone="success"] { color:#176557 }
+.ops-facts { display:grid; grid-template-columns:minmax(120px,1fr) 2fr; gap:8px 16px; font-size:13px }
+.ops-facts dt { color:var(--muted) }
+.ops-facts dd { margin:0; overflow-wrap:anywhere }
+.ops-secondary-heading { margin-top:32px }
+.ops-grid table { width:100%; border-collapse:collapse; font-size:12px }
+.ops-grid th,.ops-grid td { padding:8px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap }
 pre {
   font-size:11px;
   line-height:1.7;

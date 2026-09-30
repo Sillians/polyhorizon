@@ -1,0 +1,24 @@
+groups:
+  - name: streaming.rules
+    rules:
+      - alert: StreamingLagHigh
+        expr: sum(polyhorizon_streaming_kafka_lag) > 1000
+        for: 10m
+        labels:
+          severity: warning
+          service: streaming
+          category: streaming
+        annotations:
+          summary: "Streaming Kafka lag high"
+          description: "Kafka lag has been high for 10 minutes."
+
+      - alert: StreamingDeadLetterRows
+        expr: sum(streaming_dead_letter_rows) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: streaming
+          category: streaming
+        annotations:
+          summary: "Streaming dead-letter rows detected"
+          description: "The streaming data-quality path is sending rows to dead-letter storage."

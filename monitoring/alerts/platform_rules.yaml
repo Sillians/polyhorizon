@@ -1,0 +1,64 @@
+groups:
+  - name: platform.rules
+    rules:
+      - alert: MonitoringTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: observability
+        annotations:
+          summary: "Monitoring target is down"
+          description: "Prometheus target {{ $labels.job }} at {{ $labels.instance }} has been unreachable for five minutes."
+
+      - alert: PrometheusRuleEvaluationFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        labels:
+          severity: critical
+          service: prometheus
+        annotations:
+          summary: "Prometheus rule evaluation is failing"
+          description: "One or more recording or alerting rules failed during the last ten minutes."
+
+      - alert: AlertmanagerNotificationFailures
+        expr: increase(alertmanager_notifications_failed_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: alertmanager
+        annotations:
+          summary: "Alert notifications are failing"
+          description: "Alertmanager failed to deliver one or more notifications."
+
+      - alert: LokiRejectedLogs
+        expr: increase(loki_discarded_samples_total[10m]) > 0
+        labels:
+          severity: warning
+          service: loki
+        annotations:
+          summary: "Loki is rejecting log entries"
+          description: "Loki discarded log entries during the last ten minutes."
+
+      - alert: AlloyDockerLogErrors
+        expr: increase(loki_source_docker_target_parsing_errors_total[10m]) > 0
+        labels:
+          severity: warning
+          service: alloy
+        annotations:
+          summary: "Alloy cannot parse Docker logs"
+          description: "Grafana Alloy reported Docker log parsing failures."
+
+      - alert: TraefikHigh5xxRate
+        expr: |
+          (
+            sum(rate(traefik_service_requests_total{code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(traefik_service_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: edge
+        annotations:
+          summary: "Edge 5xx rate exceeds 5%"
+          description: "Traefik has returned more than 5% server errors for ten minutes."

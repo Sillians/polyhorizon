@@ -320,6 +320,8 @@ class Config(BaseConfigModel):
 
 
 def load_config(config_path: Optional[Path | str] = None) -> Config:
-    if config_path:
-        return Config.from_yaml(config_path)
-    return Config.load_default()
+    config = Config.from_yaml(config_path) if config_path else Config.load_default()
+    if os.getenv("POLYHORIZON_LOW_MEMORY") == "1":
+        from polyhorizon.streaming.configs.low_memory import apply_low_memory
+        config = apply_low_memory(config)
+    return config

@@ -156,6 +156,7 @@ class TradesStreamingJob:
                 .format("delta")
                 .option("ignoreChanges", "true")
                 .option("ignoreDeletes", "true")
+                .option("maxFilesPerTrigger", "32")
                 .load(self.paths["bronze"])
             )
 

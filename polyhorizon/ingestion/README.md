@@ -73,3 +73,12 @@ checks Spark checkpoints, dead-letter routing, Gold completion, and scheduled
 Prefect publication through PostgreSQL and Feast/Redis. It uses no Finnhub token
 or application data. The test is opt-in and its production-coverage limits are
 documented in the guide.
+# Consumer delivery semantics
+
+The Kafka consumer uses manual offset commits. A message or batch is committed
+only after all registered handlers succeed. Invalid trades and handler failures
+remain uncommitted and fail the Prefect task, so retries replay them. Handlers
+must therefore be idempotent (at-least-once delivery). The iterator is resumed
+after idle timeouts rather than ending the market-hours task. Persistent poison
+records currently require operator intervention; a durable Kafka dead-letter
+path is not yet implemented for this consumer.

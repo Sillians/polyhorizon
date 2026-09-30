@@ -1,0 +1,3 @@
+# Source-only local update; keep the dependency-tested base available for rollback.
+FROM polyhorizon-features:verified-local
+COPY polyhorizon /app/polyhorizon

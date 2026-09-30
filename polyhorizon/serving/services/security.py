@@ -28,7 +28,9 @@ class SecurityManager:
     def authorize(self, request: Request) -> SecurityDecision:
         path = request.url.path.rstrip("/")
         prefix = self.config.api.version_prefix.rstrip("/")
-        operator_path = path in {f"{prefix}/ops/session", f"{prefix}/features/debug", f"{prefix}/model/reload"}
+        operator_path = path in {f"{prefix}/ops/session", f"{prefix}/ops/overview", f"{prefix}/features/debug",
+                                 f"{prefix}/model/reload", f"{prefix}/model/prepare",
+                                 f"{prefix}/model/activate"}
         key = request.headers.get(self.config.security.api_key_header, "")
         operator = bool(key) and any(
             secrets.compare_digest(key, candidate)

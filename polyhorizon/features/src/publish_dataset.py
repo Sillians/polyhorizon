@@ -5,11 +5,14 @@ that same dataset and prevents another release from overtaking partial publicati
 """
 
 import io
+import logging
 from datetime import datetime, timedelta, timezone
 
+import pandas as pd
 from deltalake import DeltaTable
 
 from polyhorizon.core.dataset_release import DatasetRelease, canonical_path, validate_feature_frame
+from polyhorizon.core.session_qualification import qualify_session, qualify_trades
 from polyhorizon.features.configs.settings import load_config
 from polyhorizon.features.src.parquet_to_postgres import (
     _validate_identifier, validate_data_contract, add_missing_columns,
@@ -30,6 +33,23 @@ created_at TIMESTAMPTZ DEFAULT now()
 """
 
 
+def _interior_session_gaps(frame, market_close) -> dict[str, int]:
+    """Count gaps between observed bars on the completed NYSE date.
+
+    This deliberately does not claim to detect missing leading bars.
+    """
+    close_date = pd.Timestamp(market_close).tz_convert("America/New_York").date()
+    timestamps = pd.to_datetime(frame["event_timestamp"], utc=True)
+    session = frame.loc[timestamps.dt.tz_convert("America/New_York").dt.date == close_date].copy()
+    session["event_timestamp"] = pd.to_datetime(session["event_timestamp"], utc=True)
+    gaps = {}
+    for symbol, rows in session.groupby("symbol"):
+        observed = set(rows["event_timestamp"])
+        expected = pd.date_range(min(observed), max(observed), freq="30min")
+        gaps[str(symbol)] = len(set(expected) - observed)
+    return gaps
+
+
 def read_release(release, config):
     release.validate_root(config.bucket_details.feature_output_path)
     bucket = config.bucket_details
@@ -44,6 +64,22 @@ def read_release(release, config):
                        storage_options=options).to_pandas()
     validate_feature_frame(frame, release)
     validate_data_contract(frame, config)
+    gold = DeltaTable(canonical_path(release.gold_path), version=release.gold_version,
+                      storage_options=options).to_pandas()
+    evidence = qualify_session(gold, release.market_close)
+    import pyarrow.dataset as ds
+    import pyarrow as pa
+    bronze = DeltaTable(canonical_path(release.bronze_path), version=release.bronze_version,
+                        storage_options=options).to_pyarrow_dataset()
+    time_type = bronze.schema.field("event_time").type
+    bounds = ((ds.field("event_time") >= pa.scalar(datetime.fromisoformat(evidence["market_open"]), type=time_type)) &
+              (ds.field("event_time") < pa.scalar(release.market_close, type=time_type)))
+    if bronze.count_rows(filter=bounds) > 2_000_000:
+        raise ValueError("Qualification exceeds bounded local trade audit capacity")
+    trades = bronze.to_table(columns=["symbol", "price", "volume", "event_time"], filter=bounds).to_pandas()
+    evidence["trade_coverage"] = qualify_trades(trades, release.market_close)
+    if release.session_qualification != evidence:
+        raise ValueError("Missing or mismatched full-session qualification evidence")
     return frame
 
 
@@ -114,12 +150,16 @@ def publish_dataset(manifest: dict, apply_changes: bool = False, config=None) ->
                 cur.execute(f"""INSERT INTO {schema}.{offline} ({','.join(COLUMNS)})
                     SELECT {','.join(COLUMNS)} FROM dataset_stage
                     ON CONFLICT (symbol,window_start) DO UPDATE SET {updates}""")
-                # Rebuild the training snapshot atomically using explicit columns
-                # and event_timestamp (bar end), retaining lineage on every row.
+                # Session-sized releases must not erase previously published
+                # training history. Retain each row's original qualified lineage.
                 cur.execute(f"DELETE FROM {schema}.{snapshot}")
                 cur.execute(f"""INSERT INTO {schema}.{snapshot} ({','.join(COLUMNS)})
-                    SELECT {','.join(COLUMNS)} FROM dataset_stage WHERE event_timestamp >= %s""",
-                    (release.max_event_time - timedelta(days=config.data.snapshot_days),))
+                    SELECT {','.join(COLUMNS)} FROM {schema}.{offline}
+                    WHERE event_timestamp >= %s AND event_timestamp <= %s
+                    AND (dataset_version = %s OR dataset_version IN
+                        (SELECT dataset_id FROM {ledger} WHERE status = 'complete'))""",
+                    (release.max_event_time - timedelta(days=config.data.snapshot_days),
+                     release.max_event_time, dataset_id))
                 cur.execute(f"""CREATE TABLE IF NOT EXISTS {schema}.latest_training_snapshot (
                     snapshot_table TEXT PRIMARY KEY, created_at TIMESTAMPTZ DEFAULT now(),
                     dataset_version TEXT)""")
@@ -155,10 +195,25 @@ def publish_dataset(manifest: dict, apply_changes: bool = False, config=None) ->
                 )
             cur.execute(f"UPDATE {ledger} SET status='complete', updated_at=now() WHERE dataset_id=%s", (dataset_id,))
             conn.commit()
+        if hasattr(config, "monitoring"):
+            try:
+                from polyhorizon.features.utils.metrics import FeatureMetricsPublisher
+                FeatureMetricsPublisher(config.monitoring).push_publication_metrics(
+                    success=True, event_timestamp=release.max_event_time,
+                    interior_session_gaps=_interior_session_gaps(frame, release.market_close),
+                )
+            except Exception:
+                logging.getLogger(__name__).warning("Publication metrics unavailable", exc_info=True)
         return {"status": "success", "dataset_id": dataset_id,
                 "feature_version": release.feature_version, "rows": release.row_count}
     except Exception:
         conn.rollback()
+        if hasattr(config, "monitoring"):
+            try:
+                from polyhorizon.features.utils.metrics import FeatureMetricsPublisher
+                FeatureMetricsPublisher(config.monitoring).push_publication_metrics(success=False)
+            except Exception:
+                logging.getLogger(__name__).warning("Publication failure metric unavailable", exc_info=True)
         raise
     finally:
         # Closing the session releases the advisory lock even on failure.

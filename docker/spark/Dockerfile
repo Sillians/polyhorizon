@@ -27,31 +27,29 @@ RUN python3 -m pip install --upgrade pip \
     && pip install uv
 
 COPY pyproject.toml uv.lock README.md /opt/app/
-RUN uv sync --frozen --extra streaming
+ENV UV_PYTHON_INSTALL_DIR=/opt/python
+RUN uv python install 3.11 \
+    && uv sync --frozen --extra streaming --python 3.11 \
+    && chmod -R a+rX /opt/python
 
 ENV PATH="/opt/app/.venv/bin:${PATH}" \
     PYSPARK_PYTHON=/opt/app/.venv/bin/python \
     PYSPARK_DRIVER_PYTHON=/opt/app/.venv/bin/python
 
 COPY docker/spark/versions.env /opt/app/docker/spark/versions.env
+COPY docker/spark/resolve-jars.sh docker/spark/smoke_dependencies.py /opt/app/docker/spark/
 COPY polyhorizon /opt/app/polyhorizon
 
 # --------------------
 # Add required JARs (versions sourced from docker/spark/versions.env)
 # --------------------
+RUN bash /opt/app/docker/spark/resolve-jars.sh
+
 RUN set -a \
     && . /opt/app/docker/spark/versions.env \
     && set +a \
-    && curl -fsSL "https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/${DELTA_SPARK_VERSION}/delta-spark_2.12-${DELTA_SPARK_VERSION}.jar" \
-        -o /opt/spark/jars/delta-spark_2.12-${DELTA_SPARK_VERSION}.jar \
-    && curl -fsSL "https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/${SPARK_SQL_KAFKA_VERSION}/spark-sql-kafka-0-10_2.12-${SPARK_SQL_KAFKA_VERSION}.jar" \
-        -o /opt/spark/jars/spark-sql-kafka-0-10_2.12-${SPARK_SQL_KAFKA_VERSION}.jar \
-    && curl -fsSL "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar" \
-        -o /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar \
-    && curl -fsSL "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VERSION}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar" \
-        -o /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VERSION}.jar \
     && curl -fsSL "https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/${JMX_PROMETHEUS_VERSION}/jmx_prometheus_javaagent-${JMX_PROMETHEUS_VERSION}.jar" \
-        -o /opt/spark/jmx/jmx_prometheus_javaagent.jar
+    -o /opt/spark/jmx/jmx_prometheus_javaagent.jar
 
 # --------------------
 # Spark configuration
@@ -63,3 +61,8 @@ COPY docker/spark/jobs /opt/spark/jobs
 RUN chown -R spark:spark /opt/spark /opt/app
 
 USER spark
+RUN /opt/app/.venv/bin/python -c \
+    "import sys, pyspark, boto3; assert sys.version_info[:2] == (3, 11)"
+RUN SPARK_LOCAL_IP=127.0.0.1 /opt/spark/bin/spark-submit --master 'local[1]' \
+    --conf spark.jars.packages= --conf spark.ui.enabled=false \
+    /opt/app/docker/spark/smoke_dependencies.py

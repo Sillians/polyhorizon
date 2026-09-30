@@ -2,7 +2,6 @@
 Prefect flow for managing Spark streaming jobs in production.
 """
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 from datetime import datetime
@@ -11,7 +10,9 @@ from zoneinfo import ZoneInfo
 from prefect import flow, task
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
-from polyhorizon.streaming.src.market_schedule import get_market_session, is_market_open
+from polyhorizon.streaming.src.market_schedule import is_market_open
+from polyhorizon.core.subprocess_lifecycle import run_owned_process
+from polyhorizon.core.session_window import collection_session, scheduled_start
 
 
 @task(name="submit-spark-job", retries=3, retry_delay_seconds=60)
@@ -33,6 +34,9 @@ def submit_spark_job(job_path: str, job_name: str, extra_conf: dict = None):
         "--name", job_name,
         "--conf", "spark.sql.streaming.checkpointLocation=s3a://polyhorizon-streamingdata/checkpoints/",
     ]
+    if os.getenv("POLYHORIZON_LOW_MEMORY") == "1":
+        spark_conf.extend(["--driver-memory", "768m", "--executor-memory", "768m",
+                           "--total-executor-cores", "1", "--executor-cores", "1"])
     
     # Add extra configurations
     if extra_conf:
@@ -46,8 +50,8 @@ def submit_spark_job(job_path: str, job_name: str, extra_conf: dict = None):
     # spark-submit directly avoids a privileged nested-Docker control path.
     with tempfile.TemporaryDirectory(prefix="dataset-release-") as directory:
         output = Path(directory) / "release.json"
-        subprocess.run(
-            ["/opt/spark/bin/spark-submit", *spark_conf], check=True,
+        run_owned_process(
+            ["/opt/spark/bin/spark-submit", *spark_conf],
             env={**os.environ, "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
                  "DATASET_RELEASE_FILE": str(output)},
         )
@@ -73,7 +77,7 @@ def publish_completed_dataset(release: dict):
 @task(name="market-hours-check")
 def market_hours_check(require_open: bool = False, timezone: str = "America/New_York") -> bool:
     now = datetime.now(ZoneInfo(timezone))
-    session = get_market_session(now, "NYSE", timezone)
+    session = collection_session(now, scheduled_start())
     if session is None:
         return False
 
@@ -138,7 +142,7 @@ def monitor_spark_job(app_id: str):
     retry_delay_seconds=60,
     timeout_seconds=10 * 60 * 60,
 )
-def spark_streaming_flow(job_name: str = "polyhorizon-streaming-job"):
+def spark_streaming_flow(job_name: str = "Polyhorizon_streaming_job", qualification_only: bool = True):
     """
     Main Prefect flow for managing Spark streaming jobs.
     
@@ -161,6 +165,8 @@ def spark_streaming_flow(job_name: str = "polyhorizon-streaming-job"):
     result = submit_spark_job(job_path=job_path, job_name=job_name)
     streaming_health_check(status="submitted", detail=str(datetime.utcnow().isoformat()))
 
+    if qualification_only:
+        return {"status": "qualification_complete", "dataset_release": result, "published": False}
     return publish_completed_dataset(result)
 
 
@@ -172,7 +178,7 @@ def spark_streaming_flow(job_name: str = "polyhorizon-streaming-job"):
     # therefore remains alive for the rest of the market session.
     timeout_seconds=10 * 60 * 60,
 )
-def spark_streaming_health_flow(job_name: str = "polyhorizon-streaming-job"):
+def spark_streaming_health_flow(job_name: str = "Polyhorizon_streaming_job", qualification_only: bool = True):
     if not market_hours_check(require_open=True):
         streaming_health_check(status="skipped", detail="market_closed")
         return {"status": "skipped", "reason": "market_closed"}
@@ -184,6 +190,8 @@ def spark_streaming_health_flow(job_name: str = "polyhorizon-streaming-job"):
     streaming_health_check(status="restarting", detail=job_name)
     result = submit_spark_job(job_path="/opt/spark/jobs/streaming_job.py", job_name=job_name)
     streaming_health_check(status="submitted", detail=str(datetime.utcnow().isoformat()))
+    if qualification_only:
+        return {"status": "qualification_complete", "dataset_release": result, "published": False}
     return {"status": "restarted", "result": publish_completed_dataset(result)}
 
 

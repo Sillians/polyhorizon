@@ -1,0 +1,111 @@
+project:
+  name: "PolyHorizon Serving Test"
+  description: "Test config for serving API"
+  version: "0.0.0"
+  service_name: "polyhorizon.model_serving"
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  root_path: ""
+  version_prefix: "/v1"
+  docs_enabled: true
+  cors_allow_origins: ["*"]
+  cors_allow_methods: ["GET", "POST"]
+  cors_allow_headers: ["*"]
+  request_timeout_seconds: 30
+
+logging:
+  log_level: "INFO"
+  log_dir: "logs"
+  log_format: "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+  log_date_format: "%Y-%m-%d %H:%M:%S"
+  log_to_file: false
+  log_json_format: false
+  max_file_size: 10485760
+  backup_count: 5
+  alert_emails: []
+
+monitoring:
+  enable_metrics: false
+  metrics_path: "/metrics"
+
+security:
+  require_api_key: false
+  api_keys: []
+  api_key_header: "X-API-Key"
+  rate_limit_enabled: false
+  rate_limit_per_minute: 100
+  rate_limit_prefix: "serving:rate-limit"
+  exempt_paths: ["/v1/health", "/v1/health/live", "/v1/health/ready", "/v1/metadata", "/metrics"]
+
+mlflow:
+  tracking_uri: "http://localhost:5000"
+
+model_registry:
+  name: "polyhorizon-test"
+  champion_alias: "champion"
+  staging_alias: "staging"
+  artifact_path: "model"
+  bootstrap_champion_alias: true
+
+feast:
+  repo_path: "polyhorizon/features"
+  feature_store_yaml: "polyhorizon/features/feature_store.yaml"
+  project_name: "polyhorizon"
+  feature_view: "stock_ohlcv_features"
+  feature_refs: []
+
+redis:
+  enabled: false
+  host: "localhost"
+  port: 6379
+  db: 0
+  password:
+  key_prefix: "forecast"
+  ttl_seconds: 300
+
+forecast:
+  horizon: 3
+  quantiles: [0.1, 0.5, 0.9]
+  target_type: "price"
+  base_price_feature: "close"
+  return_to_price_method: "simple"
+  output_decimals: 4
+
+client_metadata:
+  supported_symbols: ["NVDA", "AAPL", "MSFT"]
+  bars_per_day: 1
+  horizon_days: [1, 2, 3]
+  default_symbol: "NVDA"
+  currency: "USD"
+  market_timezone: "America/New_York"
+  feature_debug_enabled: false
+  model_reload_enabled: false
+
+inference:
+  max_encoder_length: 30
+  max_prediction_length: 3
+  time_idx_field: "time_idx"
+  time_field: "event_timestamp"
+  group_id_field: "symbol"
+  freq: "30min"
+  target: "target"
+  static_categoricals: ["symbol"]
+  time_varying_known_categoricals: []
+  time_varying_known_reals: []
+  time_varying_unknown_reals: ["open", "high", "low", "close"]
+
+offline_store:
+  db_schema: "public"
+  offline_table_name: "offline_store"
+  snapshot_table_name: "feature_store_snapshot"
+  history_rows: 64
+
+connection_parameters:
+  host: "localhost"
+  port: 5432
+  database: "postgres"
+  user: "postgres"
+  password: "postgres"
+  connect_timeout: 5

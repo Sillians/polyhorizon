@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 
 REQUEST_LATENCY = Histogram(
@@ -24,6 +24,10 @@ CACHE_MISS = Counter(
 MODEL_LOAD = Counter(
     "serving_model_loads_total",
     "Number of model loads",
+)
+CHAMPION_MATCH = Gauge("serving_champion_match", "Loaded model matches the registry champion")
+STALE_FORECAST_REJECTIONS = Counter(
+    "serving_forecast_stale_rejections_total", "Forecast requests withheld for stale features"
 )
 
 

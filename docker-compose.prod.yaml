@@ -822,6 +822,9 @@ services:
       - .env.prod
     environment:
       SERVING_CONFIG_PATH: /app/polyhorizon/serving/configs/serving_config.yaml
+      SERVING_GRAFANA_URL: https://${GRAFANA_DOMAIN}/d/polyhorizon-mission-control
+      SERVING_PREFECT_URL: https://${PREFECT_DOMAIN}
+      SERVING_MLFLOW_URL: https://${MLFLOW_DOMAIN}
       FEAST_REPO_PATH: /app/polyhorizon/features/feature_repo
       FEAST_STORE_YAML: /app/polyhorizon/features/feature_repo/feature_store.yaml
     depends_on:

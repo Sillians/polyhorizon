@@ -7,6 +7,7 @@ import pandas as pd
 import psycopg2
 from feast import FeatureStore
 
+from polyhorizon.core.dataset_release import publication_source_query
 from polyhorizon.serving.configs.settings import Config
 from polyhorizon.serving.utils.logger import get_logger
 
@@ -33,19 +34,21 @@ class FeatureStoreClient:
         response = self.store.get_online_features(
             features=feature_refs,
             entity_rows=entity_rows,
-            include_timestamp=True,
         )
         return response.to_df()
 
     def get_offline_history(self, symbol: str, limit: int) -> pd.DataFrame:
         cfg = self.config
         params = cfg.connection_parameters.model_dump(exclude_none=True)
-        table = f"{cfg.offline_store.db_schema}.{cfg.offline_store.offline_table_name}"
+        published = publication_source_query(
+            cfg.offline_store.db_schema,
+            cfg.offline_store.offline_table_name,
+        )
         time_field = cfg.inference.time_field
 
         query = f"""
             SELECT *
-            FROM {table}
+            FROM ({published}) AS published_features
             WHERE symbol = %s
             ORDER BY {time_field} DESC
             LIMIT %s;

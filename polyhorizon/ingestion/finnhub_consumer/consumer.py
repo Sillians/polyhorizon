@@ -158,6 +158,8 @@ class FinnhubConsumer:
     ):
         self.settings = settings or load_config()
         self.config = runtime_config or ConsumerRuntimeConfig.from_settings(self.settings)
+        if self.config.enable_auto_commit:
+            raise ValueError("Reliable ingestion requires KAFKA_ENABLE_AUTO_COMMIT=false")
         self._consumer_factory = consumer_factory or self._default_consumer_factory
         self.logger = get_logger("FinnhubConsumer")
 
@@ -165,6 +167,7 @@ class FinnhubConsumer:
         self._consumer: Optional[KafkaConsumer] = None
         self._processing_thread: Optional[threading.Thread] = None
         self._shutdown_event = threading.Event()
+        self._thread_error: Optional[Exception] = None
 
         self._messages_consumed = 0
         self._messages_processed = 0
@@ -236,6 +239,7 @@ class FinnhubConsumer:
         )
 
     def _process_message(self, message) -> None:
+        trade = None
         try:
             trade = TradeMessage(
                 raw_data=message.value or {},
@@ -250,67 +254,61 @@ class FinnhubConsumer:
             if message.partition is not None:
                 self._partition_offsets[message.partition] = message.offset
 
+            if not trade.is_valid():
+                raise ValueError("Invalid trade message")
             if self._message_handlers:
                 for handler in self._message_handlers:
-                    try:
-                        handler(trade)
-                    except Exception as e:
-                        self.logger.error("Error in message handler %s: %s", handler.__name__, e)
-                        self._handle_processing_error(e, trade)
+                    handler(trade)
             else:
                 self._default_message_handler(trade)
 
+            self._consumer.commit()
             self._messages_processed += 1
             self._consecutive_errors = 0
         except Exception as e:
             self._messages_failed += 1
             self._consecutive_errors += 1
             self.logger.error("Failed to process message: %s", e)
-            self._handle_processing_error(e, None)
+            self._handle_processing_error(e, trade)
+            raise
 
     def _process_message_batch(self, messages: List) -> None:
         trades: List[TradeMessage] = []
-        for message in messages:
-            try:
+        try:
+            for message in messages:
                 trade = TradeMessage(
                     raw_data=message.value or {},
                     key=message.key,
                     partition=message.partition,
                     offset=message.offset,
                 )
+                if not trade.is_valid():
+                    raise ValueError("Invalid trade message in batch")
                 trades.append(trade)
                 self._messages_consumed += 1
                 if trade.symbol:
                     self._symbols_seen.add(trade.symbol)
                 if message.partition is not None:
                     self._partition_offsets[message.partition] = message.offset
-            except Exception as e:
-                self.logger.error("Failed to build trade from batch item: %s", e)
-                self._messages_failed += 1
-
-        self._last_message_time = time.time()
-
-        if self._batch_handlers:
-            for handler in self._batch_handlers:
-                try:
+            self._last_message_time = time.time()
+            if self._batch_handlers:
+                for handler in self._batch_handlers:
                     handler(trades)
-                except Exception as e:
-                    self.logger.error("Error in batch handler %s: %s", handler.__name__, e)
-                    self._handle_processing_error(e, None)
-        else:
-            for trade in trades:
-                if self._message_handlers:
-                    for handler in self._message_handlers:
-                        try:
+            else:
+                for trade in trades:
+                    if self._message_handlers:
+                        for handler in self._message_handlers:
                             handler(trade)
-                        except Exception as e:
-                            self.logger.error("Error in message handler %s: %s", handler.__name__, e)
-                            self._handle_processing_error(e, trade)
-                else:
-                    self._default_message_handler(trade)
-
-        self._messages_processed += len(trades)
-        self._consecutive_errors = 0
+                    else:
+                        self._default_message_handler(trade)
+            self._consumer.commit()
+            self._messages_processed += len(trades)
+            self._consecutive_errors = 0
+        except Exception as exc:
+            self._messages_failed += 1
+            self._consecutive_errors += 1
+            self._handle_processing_error(exc, trades[-1] if trades else None)
+            raise
 
     def _handle_processing_error(self, error: Exception, trade: Optional[TradeMessage] = None) -> None:
         if self._error_handlers:
@@ -359,43 +357,48 @@ class FinnhubConsumer:
 
     def _consumer_loop(self) -> None:
         try:
-            if self.config.batch_processing:
+            while not self._shutdown_event.is_set():
+                seen = False
                 batch: List[Any] = []
                 for message in self._consumer:
                     if self._shutdown_event.is_set():
                         break
-                    batch.append(message)
-                    if len(batch) >= self.config.batch_size:
-                        self._process_message_batch(batch)
-                        batch = []
-                        if self._messages_consumed % self.config.metrics_interval == 0:
-                            self._log_health_metrics()
-
-                if batch:
-                    self._process_message_batch(batch)
-            else:
-                for message in self._consumer:
-                    if self._shutdown_event.is_set():
-                        break
-                    self._process_message(message)
-                    if self._messages_consumed % self.config.metrics_interval == 0:
+                    seen = True
+                    if self.config.batch_processing:
+                        batch.append(message)
+                        if len(batch) >= self.config.batch_size:
+                            self._process_message_batch(batch)
+                            batch = []
+                    else:
+                        self._process_message(message)
+                    if self._messages_consumed and self._messages_consumed % self.config.metrics_interval == 0:
                         self._log_health_metrics()
+                if batch and not self._shutdown_event.is_set():
+                    self._process_message_batch(batch)
+                if not seen:
+                    self._shutdown_event.wait(0.5)
 
         except KafkaTimeoutError:
             if not self._shutdown_event.is_set():
                 self.logger.debug("Consumer timeout - no messages available")
         except KafkaError as e:
             self.logger.error("Kafka error in consumer loop: %s", e)
+            self._thread_error = e
             raise
         except Exception as e:
             self.logger.error("Unexpected error in consumer loop: %s", e)
+            self._thread_error = e
             raise
+        finally:
+            self._is_running = False
 
     @log_execution_time
     def start(self, blocking: bool = True) -> None:
         if self._is_running:
             self.logger.warning("Consumer is already running")
             return
+        if self._consumer is None:
+            self._initialize()
 
         self.logger.info(
             "Starting consumer | topic=%s group=%s batch=%s handlers=%d+%d",
@@ -409,6 +412,7 @@ class FinnhubConsumer:
         self._is_running = True
         self._start_time = time.time()
         self._shutdown_event.clear()
+        self._thread_error = None
 
         try:
             if blocking:
@@ -430,7 +434,7 @@ class FinnhubConsumer:
                 self.stop()
 
     def stop(self) -> None:
-        if not self._is_running:
+        if not self._is_running and self._consumer is None:
             return
         self._is_running = False
         self._shutdown_event.set()
@@ -442,7 +446,8 @@ class FinnhubConsumer:
                     self.logger.warning("Consumer thread did not stop within timeout")
 
             if self._consumer:
-                self._consumer.close()
+                self._consumer.close(timeout_ms=5000)
+                self._consumer = None
 
             if self._start_time > 0:
                 self._log_health_metrics()
@@ -454,6 +459,10 @@ class FinnhubConsumer:
     @property
     def is_running(self) -> bool:
         return self._is_running
+
+    @property
+    def thread_error(self) -> Optional[Exception]:
+        return self._thread_error
 
     @property
     def metrics(self) -> Dict[str, Any]:

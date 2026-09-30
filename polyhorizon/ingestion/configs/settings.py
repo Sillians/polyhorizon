@@ -28,6 +28,8 @@ class FinnhubConnectionConfig(BaseConfigModel):
     finnhub_token: SecretStr
     finnhub_ws_url: AnyUrl
     max_symbols_per_connection: PositiveInt
+    trade_stale_seconds: PositiveInt = 120
+    recovery_seconds: PositiveInt = 60
     max_total_symbols: PositiveInt
     subscription_delay: NonNegativeFloat
     connection_retry_delay: NonNegativeInt

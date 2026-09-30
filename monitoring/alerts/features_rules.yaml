@@ -1,0 +1,55 @@
+groups:
+  - name: features.rules
+    rules:
+      - alert: FeatureMaterializationFailed
+        expr: features_materialization_success == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: features
+          category: polyhorizon-pipeline
+        annotations:
+          summary: "Feature materialization failures"
+          description: "Feature materialization failures detected in the last 15 minutes."
+
+      - alert: FeatureFreshnessStale
+        expr: features_publication_deadline_missed == 1
+        for: 10m
+        labels:
+          severity: warning
+          service: features
+          category: polyhorizon-pipeline
+        annotations:
+          summary: "Required post-close feature release is overdue"
+          description: "The NYSE calendar-aware watchdog found no completed release by the publication deadline."
+
+      - alert: PublicationWatchdogUnavailable
+        expr: absent(features_watchdog_checked_timestamp_seconds) or (time() - features_watchdog_checked_timestamp_seconds > 7200)
+        for: 10m
+        labels:
+          severity: warning
+          service: features
+        annotations:
+          summary: "Publication deadline watchdog is not reporting"
+
+      - alert: DatasetPublicationFailed
+        expr: features_publication_success == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: features
+          category: polyhorizon-pipeline
+        annotations:
+          summary: "Latest dataset publication failed"
+          description: "Inspect the publication ledger and retry the pending dataset ID."
+
+      - alert: FeatureSessionInteriorGap
+        expr: features_interior_session_gaps > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: features
+          category: polyhorizon-pipeline
+        annotations:
+          summary: "Interior market bars missing for {{ $labels.symbol }}"
+          description: "This counts gaps between observed bars; check /ops for full session completeness."

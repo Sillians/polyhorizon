@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 import mlflow
 import mlflow.data
+from polyhorizon.core.dataset_release import publication_source_query
 from polyhorizon.core.product_symbols import filter_product_frame
 from mlflow.data.pandas_dataset import PandasDataset
 from mlflow.data.dataset_source import DatasetSource
@@ -56,10 +57,20 @@ class PostgresDataLoader:
     # SQL Builder
     # -----------------------
     def build_query(self) -> str:
+        # Validate SQL identifiers using the shared publication contract.
+        publication_source_query(self.schema, self.snapshot_table_name)
+        days = int(self.config.data.min_days_required)
+        if days <= 0:
+            raise ValueError("Training lookback must be positive")
         return f"""
-        SELECT *
-        FROM {self.fully_qualified_table}
-        WHERE event_timestamp >= NOW() - INTERVAL '{self.config.data.min_days_required} days';
+        SELECT snapshot.*
+        FROM {self.fully_qualified_table} AS snapshot
+        JOIN {self.schema}.dataset_publications AS publication
+          ON snapshot.dataset_version = publication.dataset_id
+        WHERE publication.status = 'complete'
+          AND publication.manifest->'session_qualification'->>'policy' = 'nyse-full-session-v1'
+          AND publication.manifest->'session_qualification'->>'status' = 'passed'
+          AND event_timestamp >= NOW() - INTERVAL '{days} days';
         """
     
     # -----------------------
@@ -75,12 +86,17 @@ class PostgresDataLoader:
         query = self.build_query()
         df = filter_product_frame(pd.read_sql(query, self.get_engine()))
 
+        if df.empty:
+            raise ValueError("Training requires a completed, full-session-qualified publication")
+
         if track_mlflow and not df.empty:
             self._log_to_mlflow(df, query)
         
         return df
 
     def _log_to_mlflow(self, df, query):
+        mlflow.set_tag("session_qualification", "nyse-full-session-v1")
+        mlflow.set_tag("qualified_dataset_versions", ",".join(sorted(set(df.dataset_version.astype(str)))))
         dataset = mlflow.data.from_pandas(df, source=query, name=f"{self.snapshot_table_name}_snapshot")
         mlflow.log_input(dataset, context="training_source")
 
@@ -165,6 +181,4 @@ class PostgresDataLoader:
         df_cur = filter_product_frame(pd.read_sql(query_cur, engine))
         
         return df_ref, df_cur
-
-
 

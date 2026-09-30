@@ -1,0 +1,1 @@
+{"identities":[{"name":"publication-test","credentials":[{"accessKey":"test","secretKey":"test"}],"actions":["Admin","Read","Write","List","Tagging"]}]}

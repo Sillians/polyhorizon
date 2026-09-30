@@ -1,0 +1,44 @@
+groups:
+  - name: ingestion-health
+    rules:
+      - alert: IngestionSymbolStale
+        expr: ingestion_producer_symbol_trade_age_seconds{job="ingestion_producer"} > 120 and on() (time() - max(push_time_seconds{job="ingestion_producer"}) < 120)
+        for: 1m
+        labels:
+          severity: warning
+          service: ingestion
+        annotations:
+          summary: "No acknowledged trade for {{ $labels.symbol }}"
+          description: "Producer is reporting but a product symbol has exceeded its freshness allowance."
+      - alert: IngestionProducerNoMessages
+        expr: ingestion_producer_message_rate == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: ingestion
+          category: streaming
+        annotations:
+          summary: "Producer message rate is zero"
+          description: "Ingestion producer has not emitted messages for 5 minutes."
+
+      - alert: IngestionConsumerHighErrorRate
+        expr: ingestion_consumer_error_rate > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: ingestion
+          category: streaming
+        annotations:
+          summary: "Consumer error rate above 5%"
+          description: "Ingestion consumer error rate has exceeded 5% for 5 minutes."
+
+      - alert: IngestionConsumerNoMessages
+        expr: ingestion_consumer_consume_rate == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: ingestion
+          category: streaming
+        annotations:
+          summary: "Consumer message rate is zero"
+          description: "Ingestion consumer has not consumed messages for 5 minutes."

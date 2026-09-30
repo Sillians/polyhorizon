@@ -14,6 +14,7 @@ from polyhorizon.serving.services.feature_parity import FeatureParityChecker
 from polyhorizon.serving.services.preprocess import ServingPreprocessor
 from polyhorizon.serving.services import metrics
 from polyhorizon.serving.services.freshness import require_post_close_features, StaleFeaturesError
+from polyhorizon.core.cumulative_calibration import calibrated_price_paths
 from polyhorizon.serving.utils.logger import get_logger
 
 
@@ -241,6 +242,7 @@ class ForecastService:
         if decoder_times.isna().any():
             raise ValueError("Decoder timestamps must not be missing")
         prediction_times = decoder_times.iloc[:horizon].tolist()
+        full_decoder_predictions = preds
         preds = preds[:horizon]
         quantile_map = {q: i for i, q in enumerate(quantiles)}
         q_values = np.array(quantiles, dtype=float)
@@ -261,9 +263,11 @@ class ForecastService:
         p50 = preds[:, p50_idx]
         p90 = preds[:, p90_idx]
         if self.config.forecast.target_type == "return":
-            p10 = self._returns_to_prices(base_price, p10)
-            p50 = self._returns_to_prices(base_price, p50)
-            p90 = self._returns_to_prices(base_price, p90)
+            calibration = getattr(self.model_handle.model, "cumulative_calibration", None)
+            if calibration is None:
+                raise ValueError("Model has no calibrated cumulative forecast paths")
+            paths = calibrated_price_paths(base_price, full_decoder_predictions, calibration)[:horizon]
+            p10, p50, p90 = paths[:, p10_idx], paths[:, p50_idx], paths[:, p90_idx]
 
         predictions = []
         for idx in range(len(p50)):

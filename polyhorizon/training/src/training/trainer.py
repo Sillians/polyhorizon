@@ -42,6 +42,11 @@ class TFTTrainer:
     
     @log_execution_time
     def train(self, model_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        parent = mlflow.active_run()
+        if parent is None or self.client.get_run(parent.info.run_id).data.tags.get(
+            "session_qualification"
+        ) != "nyse-full-session-v1":
+            raise ValueError("Training requires qualified session lineage on the source run")
         # 1. Use an active run if it exists, otherwise start a child run
         # This prevents the 'double run' issue common with PL + MLflow
         
@@ -51,6 +56,7 @@ class TFTTrainer:
             run_ctx = mlflow.start_run(run_name="tft_training_execution")
 
         with run_ctx as run:
+            mlflow.set_tag("session_qualification", "nyse-full-session-v1")
             
             num_cpu = os.cpu_count() or 1
             num_workers = min(self.config.training.num_workers, max(1, num_cpu - 1))
@@ -185,8 +191,24 @@ class TFTTrainer:
         # model artifact. Serving can then recreate the exact training dataset
         # contract instead of fitting new encoders at request time.
         model.dataset_parameters = ds_params
+        from polyhorizon.core.cumulative_calibration import fit_cumulative_residuals
+        import numpy as np
+        validation_loader = self.validation_ds.to_dataloader(train=False, batch_size=128, num_workers=0)
+        actual_paths = []
+        for _, targets in validation_loader:
+            values = targets[0] if isinstance(targets, (tuple, list)) else targets
+            actual_paths.append(values.detach().cpu().numpy())
+        actual = np.concatenate(actual_paths, axis=0)
+        predicted = model.predict(self.validation_ds, mode="quantiles", return_x=False)
+        if hasattr(predicted, "output"):
+            predicted = predicted.output
+        if hasattr(predicted, "detach"):
+            predicted = predicted.detach().cpu().numpy()
+        model.cumulative_calibration = fit_cumulative_residuals(
+            actual, predicted, self.config.training.quantiles
+        )
         from polyhorizon.core.target_contract import attach_target_contract
-        target_contract = attach_target_contract(model, ds_params)
+        target_contract = attach_target_contract(model, ds_params, self.config)
         mlflow.set_tag("dataset_parameters", str(ds_params))
 
         # 2. Log and Register in one step

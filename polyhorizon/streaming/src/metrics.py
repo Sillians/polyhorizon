@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Dict, Optional
 
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+from prometheus_client import CollectorRegistry, Gauge, pushadd_to_gateway
 from pyspark.sql.streaming import StreamingQueryListener
 
 from polyhorizon.streaming.configs.settings import MonitoringAndMetricsConfig
@@ -22,7 +22,7 @@ class StreamingMetricsPublisher:
             registry = CollectorRegistry()
             gauge = Gauge(name, name, list(labels.keys()), registry=registry)
             gauge.labels(**labels).set(value)
-            push_to_gateway(self.config.pushgateway_url, job="streaming-job", registry=registry)
+            pushadd_to_gateway(self.config.pushgateway_url, job="streaming-job", registry=registry)
         except Exception:
             self.logger.warning("Failed to push metric %s to Pushgateway", name, exc_info=True)
 

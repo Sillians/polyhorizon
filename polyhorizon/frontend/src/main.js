@@ -49,7 +49,58 @@ function lockOps() {
   state.operator = ""; state.capabilities = null;
   $("operator-key").value = ""; $("ops-lock").hidden = false; $("ops-content").hidden = true;
   $("model-data").textContent = "Not loaded"; $("feature-data").textContent = "No feature data requested.";
+  ["ops-publication", "ops-features", "ops-governance", "ops-outcomes", "ops-incidents", "ops-symbol-rows"].forEach(id => $(id).replaceChildren());
+  $("ops-gate-title").textContent = "Checking evidence…";
+  $("ops-gate-detail").textContent = "The overview is read-only and does not submit a forecast.";
+  $("ops-gaps").textContent = ""; $("ops-checked").textContent = "";
+  ["mission-control-link", "prefect-link", "mlflow-link"].forEach(id => { $(id).hidden = true; $(id).removeAttribute("href"); });
   $("reload").disabled = true; $("features").disabled = true;
+}
+
+function facts(id, pairs) {
+  $(id).replaceChildren(...pairs.flatMap(([label, value]) => {
+    const term = document.createElement("dt"), description = document.createElement("dd");
+    term.textContent = label; description.textContent = value == null || value === "" ? "Not available" : String(value);
+    return [term, description];
+  }));
+}
+
+function renderOverview(data) {
+  const gate = data.forecast_gate;
+  $("ops-gate-title").textContent = gate.status === "eligible" ? "Preflight eligible" : "Forecast may be unavailable";
+  $("ops-gate-title").dataset.tone = gate.status === "eligible" ? "success" : "warning";
+  $("ops-gate-detail").textContent = gate.reasons.length ? gate.reasons.join(" · ") : gate.note;
+  $("ops-checked").textContent = "Checked " + time(data.checked_at);
+  const latest = data.publication.recent[0];
+  facts("ops-publication", [["Status", data.publication.status], ["Dataset", latest?.dataset_id],
+    ["Latest event", latest?.max_event_time ? time(latest.max_event_time) : null],
+    ["Pending releases", data.publication.pending_count]]);
+  $("ops-symbol-rows").replaceChildren(...data.symbols.map(row => {
+    const tr = document.createElement("tr");
+    const bars = row.expected_bars == null ? "Not due" : `${row.observed_bars}/${row.expected_bars}`;
+    [row.symbol, row.status, row.latest_bar ? time(row.latest_bar) : "—", bars,
+      row.history_rows == null ? "—" : `${row.history_rows}/${row.required_encoder_rows}`].forEach(value => {
+      const td = document.createElement("td"); td.textContent = value; tr.append(td);
+    });
+    return tr;
+  }));
+  const gaps = data.symbols.filter(row => row.missing_bars?.length);
+  const checked = data.symbols.filter(row => row.expected_bars != null);
+  $("ops-gaps").textContent = gaps.length ? gaps.map(row => `${row.symbol}: ${row.missing_bars.length} missing session bars`).join(" · ") : checked.length ? "No missing bars found for the latest due session in the inspected windows." : "Session-bar completeness has not been checked yet.";
+  const online = data.online.map(row => `${row.symbol}: ${row.status}`).join(" · ");
+  facts("ops-features", [["Publication ledger", data.publication.status], ["Recent releases", data.publication.recent.length],
+    ["Online latest close", online], ["Full feature parity", "Not measured"]]);
+  facts("ops-governance", [["Loaded version", data.model.loaded_version], ["Registry champion", data.model.champion_version],
+    ["Qualification", data.model.qualification], ["Prepared version", data.model.prepared_version],
+    ["Loaded at", time(data.model.loaded_at)], ["Replica scope", data.model.scope]]);
+  const counts = data.requests.forecast_status_counts;
+  facts("ops-outcomes", [["Forecast HTTP responses", Object.entries(counts).map(([code, count]) => `${code}: ${count}`).join(" · ") || "None since startup"],
+    ["Request scope", data.requests.scope], ["Realized quality", data.outcomes.status]]);
+  const alerts = data.alerts.status === "available" ? `${data.alerts.count} active` : "Unavailable";
+  const alertNames = data.alerts.items?.map(item => `${item.name} (${item.severity})`).join(" · ");
+  facts("ops-incidents", [["Fleet activation", data.fleet.status], ["Alert feed", alerts],
+    ["Active alerts", alertNames],
+    ["Recovery", "Inspect Prefect runs, registry alias, publication ledger, and Grafana alerts"]]);
 }
 
 async function connect() {
@@ -168,6 +219,10 @@ async function refreshModel() {
   const model = await opsAction("model", "/v1/model");
   if (model) $("model-data").textContent = JSON.stringify(model, null, 2);
 }
+async function refreshOverview() {
+  const overview = await opsAction("overview", "/v1/ops/overview");
+  if (overview) renderOverview(overview);
+}
 $("ops-login").onsubmit = async event => {
   event.preventDefault();
   if (!state.metadata) { notice("Connect to the API before unlocking operations.", "error"); return; }
@@ -175,13 +230,23 @@ $("ops-login").onsubmit = async event => {
   const session = await opsAction("session", "/v1/ops/session");
   if (!session || session.role !== "operator") { lockOps(); return; }
   state.capabilities = session; $("ops-lock").hidden = true; $("ops-content").hidden = false;
+  for (const [id, value] of [["mission-control-link", session.grafana_url], ["prefect-link", session.prefect_url], ["mlflow-link", session.mlflow_url]]) {
+    try {
+      const target = new URL(value);
+      if (target.protocol === "https:" || (target.protocol === "http:" && ["localhost", "127.0.0.1"].includes(target.hostname))) {
+        $(id).href = target.href;
+        $(id).hidden = false;
+      }
+    } catch { /* An invalid operator link is simply unavailable. */ }
+  }
   $("reload").disabled = !session.model_reload_enabled;
   $("features").disabled = !session.feature_debug_enabled;
   notice("Operator session unlocked. Disabled actions are not enabled by the serving configuration.", "success");
-  await refreshModel();
+  await Promise.all([refreshModel(), refreshOverview()]);
 };
 $("lock").onclick = () => { state.generation++; api.cancelAll(); lockOps(); notice("Console locked. Operator credential cleared."); };
 $("model-refresh").onclick = refreshModel;
+$("ops-refresh").onclick = refreshOverview;
 $("features").onclick = async () => {
   const data = await opsAction("debug", "/v1/features/debug?symbol=" + encodeURIComponent($("ops-symbol").value) + "&limit=10");
   if (data) $("feature-data").textContent = JSON.stringify(data, null, 2);

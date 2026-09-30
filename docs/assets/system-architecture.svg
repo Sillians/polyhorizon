@@ -1,0 +1,230 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1650" viewBox="0 0 1600 1650" role="img" aria-labelledby="title description">
+  <title id="title">PolyHorizon end-to-end system architecture</title>
+  <desc id="description">Four numbered workflows show live Finnhub ingestion through Kafka and Spark to Delta; post-close qualification and publication through PostgreSQL, Feast and Redis; TFT training, MLflow governance and champion activation; and frontend requests through FastAPI to calibrated forecasts. Prefect orchestrates workflows. Gates block incomplete sessions and unqualified models. The local profile has two Kafka brokers and one Spark worker. Logical stages do not imply all services are currently enabled.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9Z" fill="#475569"/></marker>
+    <marker id="greenArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9Z" fill="#047857"/></marker>
+    <marker id="purpleArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9Z" fill="#7c3aed"/></marker>
+    <style>
+      text{font-family:Arial,Helvetica,sans-serif;fill:#172b46}
+      .title{font-size:40px;font-weight:700;letter-spacing:-1px}
+      .subtitle{font-size:20px;fill:#475569}
+      .eyebrow{font-size:14px;font-weight:700;letter-spacing:2px;fill:#52657c}
+      .laneTitle{font-size:22px;font-weight:700}
+      .cardTitle{font-size:18px;font-weight:700}
+      .body{font-size:16px;fill:#334155}
+      .small{font-size:15px;fill:#475569}
+      .edgeLabel{font-size:16px;font-weight:600;fill:#475569}
+      .card{fill:#fff;stroke-width:1.5}
+      .blue{stroke:#60a5fa}.green{stroke:#34d399}.purple{stroke:#a78bfa}.orange{stroke:#fb923c}
+      .gate{fill:#fffbeb;stroke:#d97706;stroke-width:2}
+      .edge{fill:none;stroke:#475569;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}
+      .featureEdge{fill:none;stroke:#047857;stroke-width:2;stroke-linejoin:round;marker-end:url(#greenArrow)}
+      .modelEdge{fill:none;stroke:#7c3aed;stroke-width:2;stroke-linejoin:round;marker-end:url(#purpleArrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="1650" rx="20" fill="#fff"/>
+  <text x="48" y="45" class="eyebrow">POLYHORIZON / SYSTEM MAP</text>
+  <text x="48" y="95" class="title">From market events to governed forecasts</text>
+  <text x="48" y="128" class="subtitle">Intraday collection. Post-close publication. Qualification before promotion.</text>
+
+  <!-- Cross-cutting control plane is shown as a shared band, not a data hop. -->
+  <rect x="40" y="158" width="1520" height="98" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="64" y="190" class="eyebrow">CONTROL + OPERATIONS</text>
+  <text x="64" y="219" class="body">Local supervisor</text>
+  <text x="64" y="242" class="small">Pre-open start / safe post-close stop</text>
+  <path d="M345 174 V240 M951 174 V240" stroke="#cbd5e1"/>
+  <text x="368" y="191" class="cardTitle">Prefect flows and Docker workers</text>
+  <text x="368" y="217" class="body">Universe → ingestion / Spark → publication → training / activation</text>
+  <text x="368" y="241" class="small">NYSE calendar · retries · concurrency · downstream flows only when enabled</text>
+  <text x="975" y="191" class="cardTitle">Observability and failure reporting</text>
+  <text x="975" y="217" class="body">Pushgateway / API metrics → Prometheus → Grafana / alerts</text>
+  <text x="975" y="241" class="small">Supervisor: progress, freshness, disk, cleanup, daily qualification report</text>
+
+  <!-- Four logical workflow lanes, read left to right. -->
+  <rect x="40" y="284" width="1520" height="230" rx="16" fill="#eff6ff" stroke="#bfdbfe"/>
+  <rect x="40" y="594" width="1520" height="230" rx="16" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <rect x="40" y="904" width="1520" height="230" rx="16" fill="#f5f3ff" stroke="#ddd6fe"/>
+  <rect x="40" y="1214" width="1520" height="230" rx="16" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="64" y="320" class="laneTitle">01  Collect and persist market events</text>
+  <text x="1110" y="320" class="small">Local profile: 2 Kafka brokers · 1 Spark worker</text>
+  <text x="64" y="630" class="laneTitle">02  Qualify the closed session and publish features</text>
+  <text x="64" y="940" class="laneTitle">03  Train, evaluate and activate a governed model</text>
+  <text x="64" y="1250" class="laneTitle">04  Serve post-close forecasts to users</text>
+
+  <!-- Inter-lane dependencies. Routes avoid cards and their labels. -->
+  <path class="edge" d="M1404 490 V550 H24 V725 H64"/>
+  <text x="406" y="542" class="edgeLabel">At NYSE close: drain Kafka, then finalize from a pinned Bronze version</text>
+  <path class="featureEdge" d="M1102 800 V858 H24 V1035 H64"/>
+  <text x="194" y="850" class="edgeLabel">Qualified snapshots + sufficient temporal history for TFT training</text>
+  <path class="featureEdge" d="M1440 800 V846 H1576 V1188 H1102 V1270"/>
+  <path d="M1204 800 V878 H1576" fill="none" stroke="#047857" stroke-width="2"/>
+  <circle cx="1576" cy="878" r="4" fill="#047857"/>
+  <text x="1086" y="1178" class="small">Read PostgreSQL history + Feast online values</text>
+  <path class="modelEdge" d="M1404 1110 V1158 H800 V1270"/>
+  <text x="816" y="1150" class="small">Exact model version + fitted encoders</text>
+
+  <!-- Row 1 -->
+  <g>
+    <rect x="64" y="340" width="260" height="150" rx="10" class="card blue"/>
+    <text x="80" y="367" class="cardTitle">Market + universe sources</text>
+    <text x="80" y="396" class="body">Finnhub trades: WebSocket</text>
+    <text x="80" y="421" class="body">S&amp;P 500 universe service</text>
+    <text x="80" y="446" class="body">Checksummed snapshots in S3</text>
+    <text x="80" y="471" class="body">Allowlist: NVDA, AAPL, MSFT</text>
+    <path class="edge" d="M324 415 H366"/>
+    <rect x="366" y="340" width="260" height="150" rx="10" class="card blue"/>
+    <text x="382" y="367" class="cardTitle">Finnhub ingestion</text>
+    <text x="382" y="396" class="body">Validate governed universe</text>
+    <text x="382" y="421" class="body">Millisecond event timestamps</text>
+    <text x="382" y="446" class="body">Normalize price / volume</text>
+    <text x="382" y="471" class="body">Reconnect + stale-symbol checks</text>
+    <path class="edge" d="M626 415 H668"/>
+    <rect x="668" y="340" width="260" height="150" rx="10" class="card blue"/>
+    <text x="684" y="367" class="cardTitle">Kafka · stock-trades</text>
+    <text x="684" y="396" class="body">Partitioned, replicated log</text>
+    <text x="684" y="421" class="body">Local: replication factor 2</text>
+    <text x="684" y="446" class="body">acks=all · minimum ISR 2</text>
+    <text x="684" y="471" class="body">Replayable trade transport</text>
+    <path class="edge" d="M928 415 H970"/>
+    <rect x="970" y="340" width="260" height="150" rx="10" class="card blue"/>
+    <text x="986" y="367" class="cardTitle">Spark streaming</text>
+    <text x="986" y="396" class="body">Parse + data-quality checks</text>
+    <text x="986" y="421" class="body">Event time + watermarks</text>
+    <text x="986" y="446" class="body">30-minute OHLCV windows</text>
+    <text x="986" y="471" class="body">Local: 8 shuffle partitions</text>
+    <path class="edge" d="M1230 415 H1272"/>
+    <rect x="1272" y="340" width="264" height="150" rx="10" class="card blue"/>
+    <text x="1288" y="367" class="cardTitle">Delta Lake / SeaweedFS</text>
+    <text x="1288" y="396" class="body">Bronze: validated trades</text>
+    <text x="1288" y="421" class="body">Gold: aggregated OHLCV</text>
+    <text x="1288" y="446" class="body">Dead-letter: invalid / late</text>
+    <text x="1288" y="471" class="body">Durable stream checkpoints</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g>
+    <rect x="64" y="650" width="260" height="150" rx="10" class="gate"/>
+    <text x="80" y="677" class="cardTitle">Session qualification</text>
+    <text x="80" y="706" class="body">Drain after NYSE close</text>
+    <text x="80" y="731" class="body">Every symbol, every bar</text>
+    <text x="80" y="756" class="body">Finite OHLCV + gap checks</text>
+    <text x="80" y="781" class="body" style="fill:#92400e">Failure blocks publication</text>
+    <path class="edge" d="M324 725 H366"/>
+    <rect x="366" y="650" width="260" height="150" rx="10" class="card green"/>
+    <text x="382" y="677" class="cardTitle">Immutable feature release</text>
+    <text x="382" y="706" class="body">Bounded rolling history</text>
+    <text x="382" y="731" class="body">Pinned Delta table versions</text>
+    <text x="382" y="756" class="body">Dataset ID + manifest</text>
+    <text x="382" y="781" class="body">Current-session features</text>
+    <path class="edge" d="M626 725 H668"/>
+    <rect x="668" y="650" width="260" height="150" rx="10" class="card green"/>
+    <text x="684" y="677" class="cardTitle">Feature publication</text>
+    <text x="684" y="706" class="body">Revalidate release evidence</text>
+    <text x="684" y="731" class="body">Commit PostgreSQL + ledger</text>
+    <text x="684" y="756" class="body">Retry the same dataset ID</text>
+    <text x="684" y="781" class="body">Then materialize via Feast</text>
+    <path class="edge" d="M928 725 H970"/>
+    <rect x="970" y="650" width="260" height="150" rx="10" class="card green"/>
+    <text x="986" y="677" class="cardTitle">PostgreSQL offline store</text>
+    <text x="986" y="706" class="body">Qualified historical features</text>
+    <text x="986" y="731" class="body">Training snapshot + lineage</text>
+    <text x="986" y="756" class="body">Publication ledger / status</text>
+    <text x="986" y="781" class="body">Encoder-history queries</text>
+    <path class="edge" d="M1230 725 H1272"/>
+    <rect x="1272" y="650" width="264" height="150" rx="10" class="card green"/>
+    <text x="1288" y="677" class="cardTitle">Feast / Redis online store</text>
+    <text x="1288" y="706" class="body">Registry + feature definitions</text>
+    <text x="1288" y="731" class="body">Materialize latest features</text>
+    <text x="1288" y="756" class="body">Low-latency online reads</text>
+    <text x="1288" y="781" class="body">Redis also caches forecasts</text>
+  </g>
+
+  <!-- Row 3 -->
+  <g>
+    <rect x="64" y="960" width="260" height="150" rx="10" class="card purple"/>
+    <text x="80" y="987" class="cardTitle">TFT training</text>
+    <text x="80" y="1016" class="body">Qualified feature history</text>
+    <text x="80" y="1041" class="body">Temporal train / validation split</text>
+    <text x="80" y="1066" class="body">Fitted encoders + normalizer</text>
+    <text x="80" y="1091" class="body">Multi-horizon quantile loss</text>
+    <path class="edge" d="M324 1035 H366"/>
+    <rect x="366" y="960" width="260" height="150" rx="10" class="card purple"/>
+    <text x="382" y="987" class="cardTitle">MLflow model registry</text>
+    <text x="382" y="1016" class="body">Metrics + target contract</text>
+    <text x="382" y="1041" class="body">Artifact: fitted parameters</text>
+    <text x="382" y="1066" class="body">Register immutable version</text>
+    <text x="382" y="1091" class="body">Assign @challenger</text>
+    <path class="edge" d="M626 1035 H668"/>
+    <rect x="668" y="960" width="260" height="150" rx="10" class="gate"/>
+    <text x="684" y="987" class="cardTitle">Governance approval</text>
+    <text x="684" y="1016" class="body">Baseline + sample-size gate</text>
+    <text x="684" y="1041" class="body">Finite metrics, calibration</text>
+    <text x="684" y="1066" class="body">Horizon / stability checks</text>
+    <text x="684" y="1091" class="body" style="fill:#92400e">First champion must pass</text>
+    <path class="edge" d="M928 1035 H970"/>
+    <rect x="970" y="960" width="260" height="150" rx="10" class="card purple"/>
+    <text x="986" y="987" class="cardTitle">Champion activation</text>
+    <text x="986" y="1016" class="body">Prepare approved version</text>
+    <text x="986" y="1041" class="body">Move @champion alias</text>
+    <text x="986" y="1066" class="body">Activate + verify replicas</text>
+    <text x="986" y="1091" class="body">Rollback on activation failure</text>
+    <path class="edge" d="M1230 1035 H1272"/>
+    <rect x="1272" y="960" width="264" height="150" rx="10" class="card purple"/>
+    <text x="1288" y="987" class="cardTitle">Serving model manager</text>
+    <text x="1288" y="1016" class="body">Load exact approved version</text>
+    <text x="1288" y="1041" class="body">Verify artifact + lineage</text>
+    <text x="1288" y="1066" class="body">Reuse trained encoders</text>
+    <text x="1288" y="1091" class="body">Atomic swap; readiness checks</text>
+  </g>
+
+  <!-- Row 4: request processing stages within the serving service are logical. -->
+  <g>
+    <rect x="64" y="1270" width="260" height="150" rx="10" class="card orange"/>
+    <text x="80" y="1297" class="cardTitle">Frontend / API clients</text>
+    <text x="80" y="1326" class="body">Forecast workspace at /</text>
+    <text x="80" y="1351" class="body">Operator console at /ops</text>
+    <text x="80" y="1376" class="body">Metadata-driven controls</text>
+    <text x="80" y="1401" class="body">Separate operator credentials</text>
+    <path class="edge" d="M324 1345 H366"/>
+    <rect x="366" y="1270" width="260" height="150" rx="10" class="card orange"/>
+    <text x="382" y="1297" class="cardTitle">Traefik gateway</text>
+    <text x="382" y="1326" class="body">Production TLS / same origin</text>
+    <text x="382" y="1351" class="body">/ routes to frontend</text>
+    <text x="382" y="1376" class="body">/v1 routes to FastAPI</text>
+    <text x="382" y="1401" class="body">Local: direct API also available</text>
+    <path class="edge" d="M626 1345 H668"/>
+    <rect x="668" y="1270" width="260" height="150" rx="10" class="card orange"/>
+    <text x="684" y="1297" class="cardTitle">FastAPI serving</text>
+    <text x="684" y="1326" class="body">Auth + request validation</text>
+    <text x="684" y="1351" class="body">/forecast · /metadata</text>
+    <text x="684" y="1376" class="body">/model · /health</text>
+    <text x="684" y="1401" class="body">Version-keyed response cache</text>
+    <path class="edge" d="M928 1345 H970"/>
+    <rect x="970" y="1270" width="260" height="150" rx="10" class="card orange"/>
+    <text x="986" y="1297" class="cardTitle">Feature readiness</text>
+    <text x="986" y="1326" class="body">Offline encoder history</text>
+    <text x="986" y="1351" class="body">Online values / offline fallback</text>
+    <text x="986" y="1376" class="body">NYSE post-close cutoff</text>
+    <text x="986" y="1401" class="body" style="fill:#92400e">Stale inputs → HTTP 503</text>
+    <path class="edge" d="M1230 1345 H1272"/>
+    <rect x="1272" y="1270" width="264" height="150" rx="10" class="card orange"/>
+    <text x="1288" y="1297" class="cardTitle">TFT inference + response</text>
+    <text x="1288" y="1326" class="body">Returns → calibrated prices</text>
+    <text x="1288" y="1351" class="body">Timestamped quantile bands</text>
+    <text x="1288" y="1376" class="body">Model / feature provenance</text>
+    <text x="1288" y="1401" class="body">NYSE forecast horizons</text>
+  </g>
+  <path class="edge" d="M1404 1420 V1468 H194 V1420"/>
+  <text x="573" y="1493" class="edgeLabel">Forecast response returned to the requesting client</text>
+
+  <line x1="48" y1="1515" x2="1552" y2="1515" stroke="#e2e8f0"/>
+  <rect x="64" y="1535" width="13" height="13" rx="3" fill="#3b82f6"/><text x="86" y="1547" class="small">Collection</text>
+  <rect x="224" y="1535" width="13" height="13" rx="3" fill="#10b981"/><text x="246" y="1547" class="small">Feature publication</text>
+  <rect x="462" y="1535" width="13" height="13" rx="3" fill="#8b5cf6"/><text x="484" y="1547" class="small">Model lifecycle</text>
+  <rect x="662" y="1535" width="13" height="13" rx="3" fill="#f97316"/><text x="684" y="1547" class="small">Serving</text>
+  <rect x="812" y="1535" width="13" height="13" rx="3" fill="#d97706"/><text x="834" y="1547" class="small">Fail-closed gates</text>
+  <text x="64" y="1580" class="small">Shared storage: SeaweedFS holds universe snapshots, Delta data and MLflow artifacts; PostgreSQL also backs Prefect and MLflow metadata.</text>
+  <text x="64" y="1607" class="small">Logical workflows, not one container per box. Arrows show handoffs / reads; monitoring is cross-cutting. Optional services need explicit enablement.</text>
+  <text x="64" y="1634" class="small">Collection success alone does not establish sufficient training history, qualified models, or production readiness.</text>
+</svg>

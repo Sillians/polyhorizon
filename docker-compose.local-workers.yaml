@@ -1,0 +1,29 @@
+# Use with docker-compose.yaml (not alone). Pools are created by register_local.py.
+services:
+  local-worker-ingestion:
+    restart: unless-stopped
+    image: polyhorizon-prefect-server:latest
+    command: prefect worker start --pool local-ingestion-pool --type docker
+    environment: &worker-env
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_API_KEY: ""
+    volumes: &worker-volumes
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [ml-platform]
+    depends_on: [prefect-server]
+  local-worker-streaming:
+    restart: unless-stopped
+    image: polyhorizon-prefect-server:latest
+    command: prefect worker start --pool local-streaming-pool --type docker
+    environment: *worker-env
+    volumes: *worker-volumes
+    networks: [ml-platform]
+    depends_on: [prefect-server]
+  local-worker-features:
+    restart: unless-stopped
+    image: polyhorizon-prefect-server:latest
+    command: prefect worker start --pool local-features-pool --type docker
+    environment: *worker-env
+    volumes: *worker-volumes
+    networks: [ml-platform]
+    depends_on: [prefect-server]

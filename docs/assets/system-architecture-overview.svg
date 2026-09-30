@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+<title id="title">PolyHorizon architecture overview</title>
+<desc id="desc">Collection flows into qualified feature publication, then governed TFT training and post-close serving. Open the interactive map to expand stage details.</desc>
+<rect width="1200" height="330" rx="20" fill="#f5f7fb"/>
+<g font-family="Arial,Helvetica,sans-serif" fill="#192b43">
+<text x="32" y="44" font-size="25" font-weight="bold">Market events → governed forecasts</text>
+<text x="32" y="74" font-size="16" fill="#526379">Intraday collection · Post-close publication · Quality gates before promotion</text>
+<rect x="32" y="105" width="260" height="135" rx="12" fill="#eaf3ff" stroke="#236ac0"/>
+<rect x="324" y="105" width="260" height="135" rx="12" fill="#e6f5ef" stroke="#218069"/>
+<rect x="616" y="105" width="260" height="135" rx="12" fill="#f2ecfb" stroke="#8256bf"/>
+<rect x="908" y="105" width="260" height="135" rx="12" fill="#fff0e5" stroke="#b66427"/>
+<g font-size="19" font-weight="bold"><text x="50" y="139">01 / Collect</text><text x="342" y="139">02 / Publish features</text><text x="634" y="139">03 / Train &amp; govern</text><text x="926" y="139">04 / Serve</text></g>
+<g font-size="16"><text x="50" y="172">Finnhub → Kafka → Spark</text><text x="50" y="201">Delta / SeaweedFS</text><text x="342" y="172">Qualify → PostgreSQL</text><text x="342" y="201">Feast → Redis</text><text x="634" y="172">TFT → MLflow</text><text x="634" y="201">Approval → champion</text><text x="926" y="172">FastAPI → frontend</text><text x="926" y="201">Freshness-gated forecasts</text></g>
+<g font-size="22" text-anchor="middle"><text x="308" y="180">→</text><text x="600" y="180">→</text><text x="892" y="180">→</text></g>
+<text x="32" y="277" font-size="16">Across all stages: Prefect scheduling · Local lifecycle supervisor · Metrics &amp; alerts</text>
+<text x="32" y="306" font-size="14" fill="#526379">Open the interactive map to unfold details. Logical architecture, not live system status.</text>
+</g></svg>

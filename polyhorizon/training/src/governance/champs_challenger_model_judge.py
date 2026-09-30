@@ -204,8 +204,8 @@ class ModelJudge:
         
         windows = challenger_metrics.get("windows", [challenger_metrics])
         reasons = []
-        if not windows:
-            reasons.append("empty_evaluation")
+        if len(windows) < self.qualification_policy.minimum_evaluation_windows:
+            reasons.append("insufficient_evaluation_windows")
         for window in windows:
             reasons.extend(qualification_failures(window, self.qualification_policy))
             if not self._passes_horizon_gates(window):
@@ -221,9 +221,14 @@ class ModelJudge:
 
         if champion is None:
             logger.info("No Champion found. Initializing first production model.")
+            if mlflow.active_run() is not None:
+                self._log_metric_bundle("challenger", challenger_metrics)
+                mlflow.log_dict({"challenger": challenger_metrics, "champion": None},
+                                "promotion_evidence.json")
             self._promote(challenger_metadata['model_version'], "Initial production promotion")
             return {
-                "promoted": True,
+                "promoted": False,
+                "approved": True,
                 "challenger_metrics": challenger_metrics,
                 "champion_metrics": None,
                 "improvement": None,
@@ -257,6 +262,21 @@ class ModelJudge:
 
         self._log_promotion_metrics(challenger_metrics, champion_metrics)
 
+        paired = list(zip(challenger_metrics.get("windows", []), champion_metrics.get("windows", [])))
+        if len(paired) < self.qualification_policy.minimum_evaluation_windows:
+            return {"promoted": False, "challenger_metrics": challenger_metrics,
+                    "champion_metrics": champion_metrics, "improvement": improvement,
+                    "rejection_reasons": ["insufficient_paired_windows"]}
+        win_fraction = sum(c["composite_score"] > p["composite_score"] for c, p in paired) / len(paired)
+        if mlflow.active_run() is not None:
+            mlflow.log_metric("promotion_window_win_fraction", win_fraction)
+            mlflow.log_dict({"challenger": challenger_metrics, "champion": champion_metrics,
+                             "window_win_fraction": win_fraction}, "promotion_evidence.json")
+        if win_fraction < self.qualification_policy.minimum_window_win_fraction:
+            return {"promoted": False, "challenger_metrics": challenger_metrics,
+                    "champion_metrics": champion_metrics, "improvement": improvement,
+                    "rejection_reasons": ["insufficient_window_wins"]}
+
         if not self._passes_risk_checks(challenger_metrics, champion_metrics):
             logger.info("Challenger rejected due to risk guardrails.")
             return {
@@ -275,7 +295,8 @@ class ModelJudge:
             )
             self._promote(challenger_metadata['model_version'], f"Beat champion by {improvement:.2%}")
             return {
-                "promoted": True,
+                "promoted": False,
+                "approved": True,
                 "challenger_metrics": challenger_metrics,
                 "champion_metrics": champion_metrics,
                 "improvement": improvement,
@@ -293,15 +314,22 @@ class ModelJudge:
             }
 
     def _promote(self, version: str, comment: str):
-        """Assigns the @champion alias to the winning version."""
-        old_champion_version = self._get_current_champion_version()
+        """Record approval; traffic activation owns the champion alias move."""
+        candidate = self.client.get_model_version(self.model_name, str(version))
+        run = self.client.get_run(candidate.run_id)
+        if run.data.tags.get("session_qualification") != "nyse-full-session-v1":
+            raise ValueError("Model requires training lineage from a qualified market session")
+        self.client.set_model_version_tag(
+            name=self.model_name, version=version,
+            key="session_qualification", value="nyse-full-session-v1",
+        )
         self.client.set_model_version_tag(
             name=self.model_name, version=version,
             key="governance_qualification", value="passed-v1",
         )
         self.client.set_registered_model_alias(
             name=self.model_name,
-            alias=self.champion_alias,
+            alias=self.config.model_registry.challenger_alias,
             version=version
         )
         self.client.update_model_version(
@@ -309,13 +337,6 @@ class ModelJudge:
             version=version,
             description=comment
         )
-        if old_champion_version is not None:
-            self.client.set_model_version_tag(
-                name=self.model_name,
-                version=old_champion_version,
-                key="replaced_by",
-                value=version
-            )
 
     def _get_current_champion_version(self) -> Optional[str]:
         try:
@@ -385,6 +406,10 @@ class ModelJudge:
                 champion_metrics["mae"],
             )
             return False
+        for challenger, champion in zip(challenger_metrics.get("windows", []), champion_metrics.get("windows", [])):
+            if challenger["mae"] > champion["mae"] * (1.0 + self.max_mae_degradation):
+                logger.info("Window MAE degradation exceeds risk limit.")
+                return False
         if self.stability_max_std is not None and "stability" in challenger_metrics:
             stability = challenger_metrics["stability"]
             if not np.isnan(stability) and stability > self.stability_max_std:

@@ -23,6 +23,7 @@ RUN pip install --upgrade pip \
 COPY pyproject.toml uv.lock /app/
 RUN uv sync --frozen --extra features
 
-COPY . /app
+COPY polyhorizon /app/polyhorizon
+COPY prefect.yaml /app/prefect.yaml
 
 ENV PYTHONPATH=/app PATH="/app/.venv/bin:${PATH}"

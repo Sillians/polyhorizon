@@ -6,6 +6,9 @@ role in the complete platform and its upstream/downstream contracts.
 This service exposes a production‑ready FastAPI API for **TFT multi‑horizon forecasts**. It loads the champion model from **MLflow Model Registry**, fetches features from **Feast**, **derives training‑time features on the server**, caches recent responses in **Redis**, and emits **Prometheus** metrics.
 
 The serving layer is intentionally self‑contained so it can operate even when the Feast online store only provides **raw OHLCV** features.
+Its offline fallback uses the same publication-ledger contract as Feast and
+selects one latest dataset version. `FEAST_SCHEMA` and `OFFLINE_TABLE_NAME` must
+therefore match the feature publication job; serving never combines releases.
 
 ## What This Service Does
 1. Loads the **champion** model alias from MLflow at startup. On the first
@@ -209,8 +212,11 @@ SERVING_RETURN_METHOD=log
 ```
 
 Startup and champion reload require a complete, versioned `target_contract`
-inside the serialized model. It defines per-symbol one-bar log returns,
-`target` as the target column, `close` as the base price, and log conversion:
+inside the serialized model. It defines the symbol universe, NYSE 30-minute
+calendar, feature roles, encoder/decoder lengths, quantiles, fitted-dataset
+fingerprint, and per-symbol one-bar log-return semantics. It also requires
+empirical cumulative-residual calibration for each horizon. `target` is the
+target column, `close` is the base price, and log conversion is:
 `price[k] = base_price * exp(sum(predicted_returns[:k]))`.
 Serving checks this against its configuration and the fitted dataset target
 before accepting a model. Missing, unsupported, or mismatched contracts fail
@@ -223,16 +229,33 @@ not modify an already-running service.
 
 ## Champion Promotion Runbook
 
+The operator-only `GET /v1/ops/overview` endpoint supplies the frontend's
+read-only operations overview. Its forecast gate is a preflight based on the
+latest publication ledger entry, per-symbol offline session bars and encoder
+depth, the latest online/offline close, and this process's governed champion.
+It is not an inference probe. Request counters are process-local, and realized
+forecast quality, full feature parity, and replica-wide activation
+remain explicitly unmeasured until durable feeds exist for them.
+The overview queries internal Alertmanager for current active alerts, but does
+not replace Grafana alert history or Prefect run inspection.
+
 1. Training registers a version and assigns `@challenger`.
-2. Governance evaluates it and, when gates pass, moves `@champion`.
-3. Reload each serving replica:
+2. Governance evaluates it and marks an approved version with
+   `governance_qualification=passed-v1`; it does not move `@champion`.
+3. Prepare that exact version on every serving replica (operator key required):
 
    ```bash
-   curl -X POST http://localhost:8000/v1/model/reload
+   curl -X POST http://localhost:8000/v1/model/prepare \
+     -H 'Content-Type: application/json' -H 'X-API-Key: <operator-key>' \
+     -d '{"model_version":"<approved-version>"}'
    ```
 
-4. Confirm `/v1/model` reports the expected exact version URI.
-5. Confirm `/v1/health/ready` returns `ready` with that version.
+4. Recheck approval and the prior alias, move `@champion` to the prepared version,
+   then call `POST /v1/model/activate` with the same body on every replica.
+5. Confirm `/v1/model` and `/v1/health/ready` report the exact version on every
+   replica. If any activation fails, restore the prior alias and reload replicas.
+   The training flow automates this sequence; avoid manual alias changes while
+   it is running.
 
 Because forecast cache keys include the model version, forecasts from the prior
 champion cannot leak into the new deployment.

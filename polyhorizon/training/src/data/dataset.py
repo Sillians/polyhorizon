@@ -117,6 +117,30 @@ class TFTDatasetFactory:
         self.logger.info("TFT datasets created successfully and artifacts logged.")
         return training_ds, validation_ds
 
+    @staticmethod
+    def evaluation_windows(validation_ds: TimeSeriesDataSet, count: int = 3) -> list[TimeSeriesDataSet]:
+        """Partition decoder origins in time; purge a horizon at each boundary."""
+        index = validation_ds.decoded_index
+        origins = np.sort(index["time_idx_first_prediction"].unique())
+        horizon = validation_ds.max_prediction_length
+        if len(origins) < count * horizon:
+            raise ValueError("Validation holdout is too short for purged evaluation windows")
+        chunks = np.array_split(origins, count)
+        windows = []
+        for number, chunk in enumerate(chunks):
+            if number < count - 1:
+                chunk = chunk[:-horizon]
+            if len(chunk) == 0:
+                raise ValueError("Purging exhausted an evaluation window")
+            start, end = int(chunk[0]), int(chunk[-1])
+            window = validation_ds.filter(
+                lambda rows, lo=start, hi=end: rows["time_idx_first_prediction"].between(lo, hi)
+            )
+            if len(window) == 0:
+                raise ValueError("Empty evaluation window")
+            windows.append(window)
+        return windows
+
 
     def _log_dataset_metadata(self, datasets: TimeSeriesDataSet):
         """Helper to log the internal structure of the TFT dataset."""

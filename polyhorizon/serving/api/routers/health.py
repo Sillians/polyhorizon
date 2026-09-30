@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from polyhorizon.serving.api.schemas import HealthResponse
 from polyhorizon.serving.app.dependencies import get_container, ServingContainer
+from polyhorizon.serving.services.metrics import CHAMPION_MATCH
 
 
 router = APIRouter()
@@ -21,6 +22,7 @@ def liveness():
 def readiness(request: Request):
     container = getattr(request.app.state, "container", None)
     if container is None or container.model_handle.model is None:
+        CHAMPION_MATCH.set(0)
         return JSONResponse(
             status_code=503,
             content={"status": "not_ready", "reason": "model_not_loaded"},
@@ -30,6 +32,7 @@ def readiness(request: Request):
     try:
         champion_version = container.model_registry.get_champion_version()
     except Exception:
+        CHAMPION_MATCH.set(0)
         return JSONResponse(
             status_code=503,
             content={
@@ -40,6 +43,15 @@ def readiness(request: Request):
         )
 
     if loaded_version != champion_version:
+        CHAMPION_MATCH.set(0)
+        # A prepared candidate is safe to serve after the alias commit while
+        # replicas switch in sequence. The grace expires if activation stalls.
+        prepared = getattr(container, "prepared_handle", None)
+        if prepared is not None and prepared.model_version == champion_version:
+            age = (datetime.now(timezone.utc) - prepared.loaded_at).total_seconds()
+            if age < 180:
+                return {"status": "ready", "model_version": loaded_version,
+                        "champion_version": champion_version, "transitioning": True}
         return JSONResponse(
             status_code=503,
             content={
@@ -49,6 +61,7 @@ def readiness(request: Request):
                 "champion_version": champion_version,
             },
         )
+    CHAMPION_MATCH.set(1)
     return {
         "status": "ready",
         "model_version": loaded_version,

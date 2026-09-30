@@ -175,6 +175,8 @@ class GovernanceConfig(BaseModel):
     minimum_evaluation_samples: int = Field(default=100, ge=1)
     minimum_baseline_mae_improvement: float = Field(default=0.02, ge=0, lt=1)
     maximum_calibration_error: float = Field(default=0.10, ge=0, lt=1)
+    minimum_evaluation_windows: int = Field(default=3, ge=2)
+    minimum_window_win_fraction: float = Field(default=0.66, gt=0, le=1)
 
 
 
@@ -186,6 +188,7 @@ class DriftDetection(BaseModel):
     threshold: float
     threshold_auc: float
     threshold_wasserstein: float
+    threshold_psi: float = Field(default=0.2, gt=0)
     ignore_columns: List[str]
     
     @model_validator(mode="after")

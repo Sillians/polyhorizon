@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import mlflow
+import tempfile
+from pathlib import Path
 from typing import Dict, Any
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_score
@@ -48,16 +50,18 @@ class SymbolDriftDetector:
         ref = ref.replace([np.inf, -np.inf], np.nan).dropna()
         cur = cur.replace([np.inf, -np.inf], np.nan).dropna()
         if ref.empty or cur.empty:
-            return 0.0
+            raise ValueError("PSI requires nonempty samples")
         quantiles = np.linspace(0, 1, _PSI_BINS + 1)
         breakpoints = ref.quantile(quantiles).values
         breakpoints = np.unique(breakpoints)
         if len(breakpoints) < 2:
-            return 0.0
+            return 0.0 if (cur == ref.iloc[0]).all() else float("inf")
+        breakpoints[0] = -np.inf
+        breakpoints[-1] = np.inf
         ref_counts = np.histogram(ref, bins=breakpoints)[0] / len(ref)
         cur_counts = np.histogram(cur, bins=breakpoints)[0] / len(cur)
-        ref_counts = np.where(ref_counts == 0, 1e-6, ref_counts)
-        cur_counts = np.where(cur_counts == 0, 1e-6, cur_counts)
+        ref_counts = np.maximum(ref_counts, 1e-6)
+        cur_counts = np.maximum(cur_counts, 1e-6)
         return float(np.sum((cur_counts - ref_counts) * np.log(cur_counts / ref_counts)))
 
     def _wasserstein(self, ref: pd.Series, cur: pd.Series) -> float | None:
@@ -76,12 +80,11 @@ class SymbolDriftDetector:
             series = df[self.target_col]
             return series.replace([np.inf, -np.inf], np.nan).dropna()
 
-        if "log_close" in df.columns:
-            df = df.copy()
-            df["log_close"] = df["log_close"].replace([np.inf, -np.inf], np.nan)
-        else:
-            df = df.copy()
-            df["log_close"] = np.log(df["close"].astype(float))
+        df = df.sort_values(["symbol", "event_timestamp"]).copy()
+        if "log_close" not in df.columns:
+            close = pd.to_numeric(df["close"], errors="coerce")
+            df["log_close"] = np.log(close.where(close > 0))
+        df["log_close"] = pd.to_numeric(df["log_close"], errors="coerce").replace([np.inf, -np.inf], np.nan)
 
         target = (
             df.groupby("symbol", observed=True)["log_close"]
@@ -95,8 +98,9 @@ class SymbolDriftDetector:
         ref_target = self._compute_target_series(ref_df)
         cur_target = self._compute_target_series(cur_df)
 
-        if ref_target.empty or cur_target.empty:
-            return {"drift_detected": False, "method": "insufficient_data"}
+        if len(ref_target) < _MIN_REF_ROWS or len(cur_target) < _MIN_CUR_ROWS:
+            return {"drift_detected": False, "method": "insufficient_data", "status": "insufficient_data",
+                    "samples": {"ref": len(ref_target), "cur": len(cur_target)}}
 
         psi = self._psi(ref_target, cur_target)
         wasserstein = self._wasserstein(ref_target, cur_target)
@@ -107,11 +111,12 @@ class SymbolDriftDetector:
         std_ratio = float(cur_std / ref_std) if ref_std > 0 else None
 
         drift_detected = False
-        if wasserstein is not None and wasserstein > self.threshold_wasserstein:
+        if psi > self.config.drift.threshold_psi or (wasserstein is not None and wasserstein > self.threshold_wasserstein):
             drift_detected = True
 
         return {
             "drift_detected": drift_detected,
+            "status": "ok",
             "psi": round(psi, 6),
             "wasserstein": None if wasserstein is None else round(wasserstein, 6),
             "ref_mean": round(ref_mean, 6),
@@ -129,8 +134,14 @@ class SymbolDriftDetector:
         s_ref = self._prepare_data(ref_df[ref_df['symbol'] == symbol])
         s_cur = self._prepare_data(cur_df[cur_df['symbol'] == symbol])
 
+        columns = sorted(set(s_ref.columns) & set(s_cur.columns) - {self.target_col})
+        if not columns:
+            raise ValueError(f"No shared numeric drift features for {symbol}")
+        s_ref, s_cur = s_ref[columns], s_cur[columns]
+
         if len(s_ref) < _MIN_REF_ROWS or len(s_cur) < _MIN_CUR_ROWS:
-            return {"symbol": symbol, "drift_detected": False, "method": "insufficient_data"}
+            return {"symbol": symbol, "drift_detected": False, "method": "insufficient_data",
+                    "status": "insufficient_data", "samples": {"ref": len(s_ref), "cur": len(s_cur)}}
 
         # Label data: Reference (0) vs Current (1)
         X = pd.concat([s_ref.assign(target=0), s_cur.assign(target=1)])
@@ -157,12 +168,13 @@ class SymbolDriftDetector:
         top_wasserstein = dict(sorted(wasserstein_scores.items(), key=lambda kv: kv[1], reverse=True)[:3])
         avg_wasserstein = float(np.mean(list(wasserstein_scores.values()))) if wasserstein_scores else None
 
-        drift_detected = (auc > self.threshold) or (avg_wasserstein is not None and avg_wasserstein > self.threshold_wasserstein)
+        drift_detected = (auc > self.threshold) or any(v > self.config.drift.threshold_psi for v in psi_scores.values())
 
         return {
             "symbol": symbol,
             "auc_score": round(auc, 3),
             "drift_detected": drift_detected,
+            "status": "ok",
             "top_drift_features": top_drifters,
             "psi_avg": round(avg_psi, 6),
             "psi_top": top_psi,
@@ -173,7 +185,9 @@ class SymbolDriftDetector:
 
     def run_full_suite(self, ref_df: pd.DataFrame, cur_df: pd.DataFrame):
         """Runs per-symbol drift + global Evidently report + MLflow logging."""
-        symbols = cur_df['symbol'].unique()
+        symbols = sorted(set(cur_df['symbol'].dropna()))
+        if not symbols or set(symbols) != set(ref_df['symbol'].dropna()):
+            raise ValueError("Drift windows must contain the same nonempty symbol universe")
         full_results = {}
         
         is_nested = mlflow.active_run() is not None
@@ -184,9 +198,19 @@ class SymbolDriftDetector:
             
             # 2. Aggregate Metrics
             drifted_symbols = [s for s, r in full_results.items() if r.get('drift_detected')]
-            pct_symbols_drifted = len(drifted_symbols) / len(symbols) if symbols.any() else 0
+            pct_symbols_drifted = len(drifted_symbols) / len(symbols)
             avg_auc = float(np.mean([r.get("auc_score", 0.0) for r in full_results.values()])) if full_results else 0.0
+            target_by_symbol = {
+                sym: self.check_target_drift(ref_df.loc[ref_df.symbol == sym], cur_df.loc[cur_df.symbol == sym])
+                for sym in symbols
+            }
             target_drift = self.check_target_drift(ref_df, cur_df)
+            target_drift["by_symbol"] = target_by_symbol
+            target_drift["drift_detected"] = target_drift["drift_detected"] or any(
+                result["drift_detected"] for result in target_by_symbol.values()
+            )
+            if any(result.get("status") != "ok" for result in target_by_symbol.values()):
+                target_drift["status"] = "insufficient_data"
             mlflow.log_metrics({
                 "pct_symbols_drifted": pct_symbols_drifted,
                 "total_drifted_count": len(drifted_symbols),
@@ -197,6 +221,7 @@ class SymbolDriftDetector:
             
             # 3. Log detailed JSON results as an artifact
             mlflow.log_dict(full_results, "per_symbol_drift.json")
+            mlflow.log_dict(target_drift, "target_drift.json")
 
             # 4. Generate & Log Evidently Report (Global View)
             # Only use columns that exist in both for the global report
@@ -205,9 +230,10 @@ class SymbolDriftDetector:
             report.run(reference_data=ref_df[common_cols], current_data=cur_df[common_cols])
             
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")
-            report_path = f"drift_report_{timestamp}.html"
-            report.save_html(report_path)
-            mlflow.log_artifact(report_path)
+            with tempfile.TemporaryDirectory() as directory:
+                report_path = Path(directory) / f"drift_report_{timestamp}.html"
+                report.save_html(str(report_path))
+                mlflow.log_artifact(str(report_path))
 
             try:
                 mlflow.log_dict(report.as_dict(), "drift_report.json")

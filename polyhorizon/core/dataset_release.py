@@ -43,6 +43,7 @@ class DatasetRelease(BaseModel):
     min_event_time: datetime
     max_event_time: datetime
     row_count: int = Field(gt=0)
+    session_qualification: dict | None = None
 
     @model_validator(mode="after")
     def validate_times(self):

@@ -1,0 +1,31 @@
+groups:
+  - name: postgres
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: postgres
+        annotations:
+          summary: PostgreSQL is unavailable
+          description: The PostgreSQL exporter cannot connect to the database.
+
+      - alert: PostgresConnectionSaturation
+        expr: sum(pg_stat_database_numbackends) / max(pg_settings_max_connections) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: PostgreSQL connection usage exceeds 80%
+          description: Pool sizing or max_connections needs investigation.
+
+      - alert: PostgresDeadlocks
+        expr: increase(pg_stat_database_deadlocks[10m]) > 0
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: PostgreSQL deadlocks detected
+          description: At least one database deadlock occurred in the last ten minutes.

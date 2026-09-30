@@ -5,7 +5,6 @@ from pytorch_forecasting import TimeSeriesDataSet
 from polyhorizon.training.src.training.trainer import TFTTrainer
 from polyhorizon.training.src.training.tuner import TFTTuner
 from polyhorizon.training.src.governance.champs_challenger_model_judge import ModelJudge
-from polyhorizon.training.src.governance.promotion_email_alert import send_promotion_alert
 
 from polyhorizon.training.src.data.generate_training_dataframe import PostgresDataLoader
 from polyhorizon.training.src.data.preprocessing import TFTDataPreprocessor
@@ -75,21 +74,9 @@ def compare_and_promote_task(
     logger = get_run_logger()
     logger.info("Comparing challenger to champion and evaluating promotion.")
     judge = ModelJudge(config)
-    result = judge.compare_and_promote_with_metrics(challenger_metadata, inference_ds)
-
-    if result["promoted"]:
-        challenger_metrics = result["challenger_metrics"]
-        metrics = {
-            "challenger_hit_rate": challenger_metrics["hit_rate"],
-            "challenger_mae": challenger_metrics["mae"],
-            "improvement_pct": float(result["improvement"] or 0.0),
-            "stability": challenger_metrics.get("stability"),
-        }
-        send_promotion_alert(
-            model_metadata=challenger_metadata,
-            metrics=metrics,
-            config=config,
-        )
+    windows = TFTDatasetFactory.evaluation_windows(
+        inference_ds, count=config.governance.minimum_evaluation_windows
+    )
+    result = judge.compare_and_promote_with_metrics(challenger_metadata, windows)
 
     return result
-

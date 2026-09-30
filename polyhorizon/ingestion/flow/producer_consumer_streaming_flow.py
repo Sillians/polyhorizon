@@ -10,6 +10,7 @@ from polyhorizon.ingestion.tasks.producer_consumer_streaming_tasks import (
     run_consumer_task,
 )
 from polyhorizon.streaming.src.market_schedule import get_market_session
+from polyhorizon.core.session_window import collection_session, scheduled_start
 
 
 MARKET_TZ = ZoneInfo("America/New_York")
@@ -35,6 +36,15 @@ async def finnhub_ingestion_flow(config_path: str | None = None):
     configure_logging(cfg.logging)
 
     now = datetime.now(MARKET_TZ)
+    session = collection_session(now, scheduled_start())
+    if session is None:
+        logger.info("Outside the scheduled collection window; skipping.")
+        return
+    opening, close = session
+    if now < opening:
+        logger.info("Waiting for NYSE open at %s", opening)
+        await asyncio.sleep((opening - now).total_seconds())
+    now = datetime.now(MARKET_TZ)
     run_seconds = _seconds_until_close(now)
     if run_seconds <= 0:
         logger.info("Market is closed; skipping ingestion run.")
@@ -42,10 +52,19 @@ async def finnhub_ingestion_flow(config_path: str | None = None):
 
     logger.info("Starting Finnhub ingestion flow for %.1f minutes.", run_seconds / 60)
 
-    await asyncio.gather(
-        run_producer_task(cfg, run_seconds),
-        asyncio.to_thread(run_consumer_task, cfg, run_seconds),
-    )
+    await run_pipeline(cfg, run_seconds, close.isoformat())
+
+
+async def run_pipeline(cfg, run_seconds, stop_at=None):
+    kwargs = {"stop_at": stop_at} if stop_at is not None else {}
+    tasks = [asyncio.create_task(run_producer_task(cfg, run_seconds, **kwargs)),
+             asyncio.create_task(run_consumer_task(cfg, run_seconds, **kwargs))]
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 if __name__ == "__main__":

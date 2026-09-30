@@ -10,6 +10,9 @@ finnhub_connection:
   finnhub_ws_url: ${FINNHUB_WS_URL}
   max_symbols_per_connection: ${MAX_SYMBOLS_PER_CONNECTION}
   max_total_symbols: ${MAX_TOTAL_SYMBOLS}
+  # During active ingestion, reconnect if any product symbol stops delivering.
+  trade_stale_seconds: 120
+  recovery_seconds: 60
   subscription_delay: ${SUBSCRIPTION_DELAY_SECONDS}
   connection_retry_delay: ${CONNECTION_RETRY_DELAY}
   rate_limit_delay: ${RATE_LIMIT_DELAY}

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PolyHorizon · Interactive architecture</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f5f7fb; --paper:#fff; --ink:#192b43; --muted:#526379; --line:#d8e0ea; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1240px; margin:auto; padding:40px 24px; }
+  h1 { font-size:clamp(28px,4vw,42px); line-height:1.15; margin:8px 0 12px; }
+  h2 { font-size:17px; margin:0 0 12px; }
+  p { margin:8px 0; }
+  a { color:inherit; text-underline-offset:3px; }
+  .eyebrow { font-size:12px; text-transform:uppercase; letter-spacing:.14em; font-weight:700; }
+  .intro, .hint, footer { color:var(--muted); }
+  .intro { max-width:780px; }
+  .hint { margin:20px 0; font-size:14px; }
+  .lane { --tone:#236ac0; --wash:#eaf3ff; margin:18px 0; padding:20px; border-radius:16px; background:var(--paper); border:1px solid var(--line); border-left:5px solid var(--tone); }
+  .green { --tone:#218069; --wash:#e6f5ef; }
+  .purple { --tone:#8256bf; --wash:#f2ecfb; }
+  .orange { --tone:#b66427; --wash:#fff0e5; }
+  .gray { --tone:#677789; --wash:#edf1f6; }
+  .nodes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:26px; align-items:start; }
+  details { position:relative; border-radius:10px; background:var(--wash); min-width:0; }
+  .nodes>details:not(:last-child)::after { content:'→'; position:absolute; right:-22px; top:21px; color:var(--muted); }
+  summary { cursor:pointer; padding:16px; min-height:94px; border-radius:10px; }
+  summary strong { font-size:16px; }
+  summary span { display:block; font-size:13px; color:var(--muted); margin-top:3px; }
+  summary:focus-visible { outline:3px solid var(--tone); outline-offset:3px; }
+  .detail { padding:0 16px 16px; font-size:14px; overflow-wrap:anywhere; }
+  .detail p { border-top:1px solid var(--line); padding-top:12px; }
+  .detail ul { padding-left:18px; margin:8px 0; }
+  .handoff { font-size:13px; color:var(--muted); margin:12px 0 0; }
+  .gate { border:1px solid #bc8b32; }
+  .shared .nodes { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .shared .nodes>details::after { content:none; }
+  footer { font-size:13px; margin-top:24px; }
+  code { font-size:.92em; }
+  @media(max-width:850px) {
+    .nodes, .shared .nodes { grid-template-columns:1fr; gap:24px; }
+    .nodes>details:not(:last-child)::after { content:'↓'; right:auto; left:22px; top:auto; bottom:-24px; }
+    summary { min-height:70px; }
+    main { padding:24px 16px; }
+  }
+  @media(prefers-color-scheme:dark) {
+    :root { --bg:#111b2a; --paper:#1b283a; --ink:#edf3fc; --muted:#b8c7da; --line:#40516a; }
+    .lane { --wash:#203953; } .green { --wash:#1c3b36; } .purple { --wash:#362b4d; }
+    .orange { --wash:#443122; } .gray { --wash:#2a3647; }
+  }
+  @media print { body { background:white; color:black; } .detail { display:block!important; } details::details-content { content-visibility:visible; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="eyebrow">PolyHorizon / System map</div>
+  <h1>Market events → governed forecasts</h1>
+  <p class="intro">Intraday collection. Qualified, post-close publication. A governed TFT model serves forecasts using the same feature contract it was trained on.</p>
+  <p class="hint">Hover to unfold a stage. Click or tap to pin it open; click again to close. Keyboard: Tab, then Enter/Space. Escape dismisses temporary hover details.</p>
+</header>
+<section class="lane" aria-labelledby="collection">
+<h2 id="collection">01 / Collect &amp; persist</h2>
+<div class="nodes">
+<details><summary><strong>Universe + Finnhub</strong><span>Governed symbols · live trades</span></summary><div class="detail"><p>The universe service publishes validated, checksummed S&amp;P 500 snapshots to SeaweedFS. Ingestion resolves the current snapshot and selects the product allowlist.</p><ul><li>NVDA, AAPL and MSFT.</li><li>Normalize trades while preserving millisecond timestamps.</li><li>NYSE calendar controls collection hours.</li></ul></div></details>
+<details><summary><strong>Kafka</strong><span>Durable stock-trades events</span></summary><div class="detail"><p>Buffers trades between ingestion and Spark, enabling checkpoint-based recovery and replay.</p><ul><li>Topic: <code>stock-trades</code>.</li><li>Low-memory local: two brokers, replication factor 2, minimum ISR 2, producer <code>acks=all</code>.</li><li>Both replicas must be available for writes with this policy.</li></ul></div></details>
+<details><summary><strong>Spark streaming</strong><span>Validate · aggregate · checkpoint</span></summary><div class="detail"><p>Reads Kafka records, validates event-time data and builds 30-minute OHLCV bars.</p><ul><li>Valid trades → Bronze Delta.</li><li>Aggregates → Gold Delta.</li><li>Invalid or late records → dead-letter Delta.</li><li>Low-memory local: one worker, eight Gold shuffle partitions.</li></ul></div></details>
+<details><summary><strong>Delta + SeaweedFS</strong><span>Versioned tables &amp; checkpoints</span></summary><div class="detail"><p>SeaweedFS provides S3-compatible object storage for Bronze trades, Gold bars, dead-letter tables and streaming checkpoints.</p><p>Delta versions provide reproducible inputs. Post-close processing drains available trades and recomputes closed bars from a pinned Bronze version.</p></div></details>
+</div><p class="handoff">↓ After the actual exchange close: persisted session data enters qualification.</p>
+</section>
+<section class="lane green" aria-labelledby="features">
+<h2 id="features">02 / Qualify &amp; publish features</h2>
+<div class="nodes">
+<details class="gate"><summary><strong>Session qualification</strong><span>Gate · completeness &amp; quality</span></summary><div class="detail"><p>Require full-session symbol/bar coverage, finite positive values and passing trade-gap checks. An incomplete session cannot silently become a production feature release.</p><p>Rolling features use bounded prior history. One qualified session does not establish enough training history for a production TFT.</p></div></details>
+<details><summary><strong>Immutable release</strong><span>Features + qualification evidence</span></summary><div class="detail"><p>Packages session features with dataset identity, pinned Delta versions and qualification evidence. The publisher revalidates the release before committing it.</p><p>Collection-only operation stops at qualification. Publication requires explicit enablement.</p></div></details>
+<details><summary><strong>PostgreSQL</strong><span>Offline history · publication ledger</span></summary><div class="detail"><p>The feature publisher commits qualified features and publication ledger state to PostgreSQL.</p><ul><li>Qualified snapshots feed training.</li><li>Offline encoder history feeds serving.</li><li>Dataset lineage supports recovery and audit.</li></ul></div></details>
+<details><summary><strong>Feast → Redis</strong><span>Online feature materialization</span></summary><div class="detail"><p>After the PostgreSQL commit, Feast materializes online features into Redis. Serving merges available online values with offline history.</p><p>PostgreSQL and Redis are not one atomic transaction. Online failures can be retried for the same dataset; freshness still gates forecasts.</p></div></details>
+</div><p class="handoff">↓ Qualified PostgreSQL history → training. PostgreSQL + Feast/Redis → serving feature readiness.</p>
+</section>
+<section class="lane purple" aria-labelledby="models">
+<h2 id="models">03 / Train &amp; govern the model</h2>
+<div class="nodes">
+<details><summary><strong>TFT training</strong><span>Temporal splits · fitted transforms</span></summary><div class="detail"><p>Trains the Temporal Fusion Transformer on qualified historical snapshots using time-based train/validation separation.</p><p>Fitted preprocessing, encoders, normalizers and target contracts are preserved for consistent inference.</p></div></details>
+<details><summary><strong>MLflow challenger</strong><span>Versioned artifacts &amp; lineage</span></summary><div class="detail"><p>Records metrics, artifacts and dataset lineage, and registers an immutable model version assigned to <code>@challenger</code>.</p><p>PostgreSQL backs MLflow metadata; SeaweedFS stores model artifacts.</p></div></details>
+<details class="gate"><summary><strong>Governance approval</strong><span>Gate · first champion included</span></summary><div class="detail"><p>Requires baseline performance, minimum evaluation sample size, finite metrics, calibration and configured horizon/stability checks.</p><p>These checks apply to the first champion too. Approval alone does not move the serving alias.</p></div></details>
+<details><summary><strong>Champion activation</strong><span>Prepare → alias → activate → verify</span></summary><div class="detail"><p>Prepares an approved model on serving replicas, moves <code>@champion</code>, activates the exact version and verifies readiness.</p><p>Activation failure triggers a rollback attempt. The serving model manager loads the governed artifact and validates its contract.</p></div></details>
+</div><p class="handoff">↓ Approved model version + fitted transforms → serving model manager.</p>
+</section>
+<section class="lane orange" aria-labelledby="serving">
+<h2 id="serving">04 / Serve post-close forecasts</h2>
+<div class="nodes">
+<details><summary><strong>Frontend → API</strong><span>Metadata-driven product controls</span></summary><div class="detail"><p>The frontend reads <code>/v1/metadata</code> and requests forecasts from FastAPI. Production Traefik routes UI and API through a single domain.</p><p>The operator console uses separate authorization. Local development can access the API directly.</p></div></details>
+<details><summary><strong>FastAPI</strong><span>Governed model &amp; request handling</span></summary><div class="detail"><p>Coordinates the loaded model, feature retrieval and inference. Forecast caches are model-version keyed and freshness checked.</p><p>Health/model endpoints expose readiness and model identity; the serving API exports operational metrics.</p></div></details>
+<details class="gate"><summary><strong>Feature readiness</strong><span>Gate · history &amp; freshness</span></summary><div class="detail"><p>Retrieves PostgreSQL encoder history plus available Feast online values and enforces the NYSE post-close freshness cutoff.</p><p>Stale features fail closed. A 30-minute bar interval does not promise intraday forecast publication.</p></div></details>
+<details><summary><strong>Forecast response</strong><span>Calibrated prices &amp; quantile bands</span></summary><div class="detail"><p>TFT outputs are converted into price forecasts with calibrated quantile bands, market-calendar timestamps and model/feature provenance.</p><p>The response returns through FastAPI to the frontend, where users see predictions and freshness context.</p></div></details>
+</div><p class="handoff">↩ Forecast response → frontend. Publication, training and promotion remain independently gated.</p>
+</section>
+<section class="lane gray shared" aria-labelledby="operations">
+<h2 id="operations">Across all stages / Control &amp; operations</h2>
+<div class="nodes">
+<details><summary><strong>Scheduling &amp; lifecycle</strong><span>macOS supervisor + Prefect</span></summary><div class="detail"><p>The local supervisor starts infrastructure before market open, checks progress and handles safe post-close shutdown. Prefect owns scheduled flows, retries and worker execution.</p><p>Local automation needs the Mac and Docker available. Downstream publication, training and activation need explicit enablement.</p></div></details>
+<details><summary><strong>Observability</strong><span>Metrics · alerts · progress checks</span></summary><div class="detail"><p>Job metrics flow through Pushgateway; API metrics are exposed by serving. Prometheus, Grafana and Alertmanager provide monitoring when enabled.</p><p>The supervisor checks offsets, Bronze progress, freshness, disk space and session cleanup.</p></div></details>
+<details><summary><strong>Deployment boundaries</strong><span>Logical stages, not container count</span></summary><div class="detail"><p>SeaweedFS and PostgreSQL are shared backing services. Low-memory local collection excludes optional dashboards, materialization and training.</p><p>This is an architecture map, not live health telemetry or a claim of production qualification.</p></div></details>
+</div>
+</section>
+<footer><a href="assets/system-architecture.svg">Full static diagram</a> · <a href="../README.md">README</a> · <a href="FORECAST_PUBLICATION_CONTRACT.md">Publication contract</a> · <a href="LOW_MEMORY_LOCAL.md">Low-memory runbook</a></footer>
+</main>
+<script>
+// Native details retain keyboard, touch and no-JavaScript support.
+for (const card of document.querySelectorAll('details')) {
+  const summary = card.querySelector('summary');
+  let pinned = false;
+  let hovering = false;
+  card.addEventListener('pointerenter', event => {
+    if (event.pointerType !== 'mouse') return;
+    hovering = true;
+    card.open = true;
+  });
+  card.addEventListener('pointerleave', () => {
+    hovering = false;
+    if (!pinned && !card.contains(document.activeElement)) card.open = false;
+  });
+  summary.addEventListener('click', event => {
+    event.preventDefault();
+    pinned = !pinned;
+    card.open = pinned;
+  });
+  card.addEventListener('focusout', event => {
+    if (!pinned && !hovering && !card.contains(event.relatedTarget)) card.open = false;
+  });
+  card.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { pinned = false; card.open = false; }
+  });
+}
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    for (const card of document.querySelectorAll('details')) {
+      if (!card.contains(document.activeElement) && card.matches(':hover')) card.open = false;
+    }
+  }
+});
+</script>
+</body>
+</html>

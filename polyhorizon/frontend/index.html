@@ -133,9 +133,44 @@
 </div>
 <div id="ops-content" hidden>
 <div class="section-heading">
-<h2>Service inspection</h2>
+<h2>Operations overview</h2>
+<a id="mission-control-link" class="button-link secondary" href="#" target="_blank" rel="noopener noreferrer" hidden>Open live Mission Control ↗</a>
+<a id="prefect-link" class="button-link secondary" href="#" target="_blank" rel="noopener noreferrer" hidden>Prefect runs ↗</a>
+<a id="mlflow-link" class="button-link secondary" href="#" target="_blank" rel="noopener noreferrer" hidden>MLflow registry ↗</a>
+<button id="ops-refresh" class="secondary">Refresh overview</button>
 <button id="lock" class="secondary">Lock console</button>
 </div>
+<article class="panel ops-gate" aria-live="polite">
+<p class="eyebrow">FORECAST AVAILABILITY</p>
+<h3 id="ops-gate-title">Checking evidence…</h3>
+<p id="ops-gate-detail" class="muted">The overview is read-only and does not submit a forecast.</p>
+<p id="ops-checked" class="muted"></p>
+</article>
+<div class="ops-grid">
+<article class="panel"><h3>Data publication and freshness</h3>
+<p class="muted">Last completed release, pending handoffs, and expected NYSE bars by symbol.</p>
+<dl id="ops-publication" class="ops-facts"></dl>
+<div class="table-scroll"><table><thead><tr><th>Symbol</th><th>Status</th><th>Latest bar</th><th>Session bars</th><th>History</th></tr></thead><tbody id="ops-symbol-rows"></tbody></table></div>
+<p id="ops-gaps" class="muted"></p>
+</article>
+<article class="panel"><h3>Feature-store state</h3>
+<dl id="ops-features" class="ops-facts"></dl>
+<p class="muted">The latest online and offline close are compared per symbol. Full feature-vector parity is not yet measured.</p>
+</article>
+<article class="panel"><h3>Model governance and activation</h3>
+<dl id="ops-governance" class="ops-facts"></dl>
+<p class="muted">Version and qualification are registry-backed. Replica-wide activation requires a separate fleet inventory.</p>
+</article>
+<article class="panel"><h3>Forecast outcomes and client impact</h3>
+<dl id="ops-outcomes" class="ops-facts"></dl>
+<p class="muted">Request counts are process-local since startup. Realized accuracy and quantile coverage require a durable forecast-to-outcome join.</p>
+</article>
+<article class="panel"><h3>Incidents and recovery</h3>
+<dl id="ops-incidents" class="ops-facts"></dl>
+<p class="muted">Active alerts come from internal Alertmanager when reachable. Use Grafana and Prefect for alert history and run traces.</p>
+</article>
+</div>
+<div class="section-heading ops-secondary-heading"><h2>Service inspection</h2></div>
 <div class="ops-grid">
 <article class="panel">
 <h3>Champion model</h3>

@@ -1,0 +1,54 @@
+groups:
+  - name: serving.rules
+    rules:
+      - alert: ServingChampionMismatch
+        expr: serving_champion_match == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: serving
+        annotations:
+          summary: "Serving process is not running the registry champion"
+          description: "Check readiness and the model activation task; this signal covers scraped processes only."
+
+      - alert: ServingHighErrorRate
+        expr: |
+          sum(rate(serving_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(serving_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: serving
+        annotations:
+          summary: "Serving error rate above 5%"
+          description: "High 5xx rate on serving API for more than 5 minutes."
+
+      - alert: ServingHighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(serving_request_latency_seconds_bucket[5m])) by (le)
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          service: serving
+        annotations:
+          summary: "Serving p95 latency above 1s"
+          description: "95th percentile latency > 1s for 5 minutes."
+
+      - alert: ServingLowCacheHitRatio
+        expr: |
+          sum(rate(serving_cache_hits_total[10m]))
+          /
+          clamp_min(
+            sum(rate(serving_cache_hits_total[10m])) + sum(rate(serving_cache_misses_total[10m])),
+            0.001
+          ) < 0.2
+        for: 10m
+        labels:
+          severity: info
+          service: serving
+        annotations:
+          summary: "Serving cache hit ratio below 20%"
+          description: "Cache hit ratio is low; consider tuning TTL or cache keys."

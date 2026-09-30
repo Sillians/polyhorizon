@@ -120,7 +120,9 @@ governance:
   improvement_threshold: 0.02
   max_mae_degradation: 0.10
   score_weights: [0.7, 0.3]
-  stability_max_std: null
+  stability_max_std: 0.10
+  minimum_evaluation_windows: 3
+  minimum_window_win_fraction: 0.66
   horizon_gates: []
 
 
@@ -130,6 +132,7 @@ drift:
   threshold: 0.20
   threshold_auc: 0.70   # If AUC > 0.7, distributions are learnably different
   threshold_wasserstein: 0.1  # For univariate shift magnitude
+  threshold_psi: 0.2
   ignore_columns: ["event_timestamp", "symbol"]
 
 

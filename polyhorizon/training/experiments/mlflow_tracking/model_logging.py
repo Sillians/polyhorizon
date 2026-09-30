@@ -5,9 +5,9 @@ from mlflow.tracking import MlflowClient
 from polyhorizon.training.utils.logger import get_logger
 logger = get_logger("mlflow.model_artifacts")
 
-def log_model_artifacts(model):
+def log_model_artifacts(model, config):
     from polyhorizon.core.target_contract import attach_target_contract
-    contract = attach_target_contract(model, getattr(model, "dataset_parameters", {}))
+    contract = attach_target_contract(model, getattr(model, "dataset_parameters", {}), config)
     mlflow.pytorch.log_model(model, artifact_path="tft_model", metadata={"target_contract": contract})
 
 

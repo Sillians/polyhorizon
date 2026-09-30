@@ -7,6 +7,7 @@ from polyhorizon.serving.api.schemas import ForecastRequest, ForecastResponse
 from polyhorizon.serving.app.dependencies import get_forecast_service
 from polyhorizon.serving.services.forecast_service import ForecastService
 from polyhorizon.serving.services.freshness import StaleFeaturesError
+from polyhorizon.serving.services.metrics import STALE_FORECAST_REJECTIONS
 from polyhorizon.serving.utils.logger import get_logger
 
 
@@ -24,6 +25,7 @@ def forecast(request: ForecastRequest, service: ForecastService = Depends(get_fo
         )
         return ForecastResponse.from_result(result)
     except StaleFeaturesError as exc:
+        STALE_FORECAST_REJECTIONS.inc()
         return JSONResponse(
             status_code=503,
             content={"detail": str(exc), "code": "stale_features"},

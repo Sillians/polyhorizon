@@ -1,0 +1,74 @@
+global:
+  scrape_interval: "30s"
+  scrape_timeout: "10s"
+  evaluation_interval: "30s"
+  external_labels:
+    platform: polyhorizon
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/alerts/ingestion-alerts.yml
+  - /etc/prometheus/alerts/serving_rules.yaml
+  - /etc/prometheus/alerts/streaming_rules.yaml
+  - /etc/prometheus/alerts/features_rules.yaml
+  - /etc/prometheus/alerts/training_rules.yaml
+  - /etc/prometheus/alerts/postgres_rules.yaml
+  - /etc/prometheus/alerts/platform_rules.yaml
+  - /etc/prometheus/alerts/slo_rules.yaml
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: "traefik"
+    static_configs:
+      - targets: ["traefik:8082"]
+
+  - job_name: "model-serving"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["model-serving:8000"]
+
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+
+  - job_name: "alloy"
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: spark-master
+    static_configs:
+      - targets: ["spark-master:8090"]
+
+  - job_name: spark-workers
+    static_configs:
+      - targets:
+          - spark-worker-1:8091
+          - spark-worker-2:8092
+
+  - job_name: "kafka"
+    static_configs:
+      - targets:
+          - "kafka-broker-1:9101"
+          - "kafka-broker-2:9102"
+          - "kafka-broker-3:9103"
+  
+  - job_name: "alertmanager"
+    static_configs:
+      - targets:
+          - "alertmanager:9093"
+
+  - job_name: "pushgateway"
+    static_configs:
+      - targets:
+          - "prometheus-pushgateway:9091"

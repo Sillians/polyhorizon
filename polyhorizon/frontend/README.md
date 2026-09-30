@@ -123,6 +123,21 @@ URLs require HTTPS; localhost HTTP is supported. Redirects are rejected to avoid
 forwarding credentials to a different destination.
 
 `/ops` requires a separate operator key checked by `GET /v1/ops/session`.
+After unlock, the read-only `GET /v1/ops/overview` shows a forecast-eligibility
+preflight, publication ledger and latest due-session bar completeness by symbol,
+offline history depth, latest online/offline close comparison, champion qualification
+and local activation state, process-local forecast HTTP counts, and explicit
+"not measured" states for realized accuracy, full feature parity, fleet-wide
+activation. Active alert counts and names come from internal Alertmanager when
+reachable; the endpoint uses `SERVING_ALERTMANAGER_URL` if set, otherwise
+`http://alertmanager:9093`. It does not execute a forecast or claim that
+the service is ready based only on this overview. Refresh is manual; the operator
+key remains in memory and is cleared on lock or connection change.
+The unlocked console links to the provisioned Grafana Mission Control dashboard
+using `SERVING_GRAFANA_URL` supplied by the serving deployment. Grafana owns
+live trends and alert visualization; `/ops` owns exact evidence and confirmed
+operator actions. The same operator session supplies safe links to Prefect runs
+and the MLflow registry. Links are hidden when their URLs are not configured.
 Configure `SERVING_OPERATOR_API_KEYS` separately from `SERVING_API_KEYS`.
 Debugging and champion reload additionally require their server-side capability
 flags and `SERVING_REQUIRE_API_KEY=true`. Reload requires an explicit confirmation.

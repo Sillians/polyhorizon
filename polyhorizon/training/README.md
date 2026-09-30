@@ -19,7 +19,7 @@ also apply to the first champion. Every window must pass; missing or nonfinite
 results cannot be hidden by averaging. Thresholds live under `governance` in the
 training YAML and should be tuned using representative held-out data.
 
-Governance marks promoted versions `governance_qualification=passed-v1`. Serving
+Governance marks approved versions `governance_qualification=passed-v1`. Serving
 bootstrap can only select READY versions carrying this qualification, never an
 arbitrary new registered version. Existing aliases are left unchanged; re-evaluate
 legacy models through governance to qualify them for future bootstrap.
@@ -42,8 +42,10 @@ promotion through a champion/challenger workflow.
 6. Persist fitted dataset parameters with the model artifact.
 7. Register the model version and assign `@challenger`.
 8. Compare challenger and champion on the validation window.
-9. Move `@champion` only when governance thresholds pass. If no champion exists,
-   the first model passing absolute qualification becomes the initial champion.
+9. Approve the version only when governance thresholds pass. Prepare it on all
+   serving replicas, move `@champion`, activate it, and verify readiness. On
+   failure, restore the prior alias and reload replicas. Initial champion
+   bootstrap is a separate serving-startup path.
 
 ## Temporal validation boundary
 
@@ -84,8 +86,13 @@ drift.
 
 Both model logging paths also serialize a versioned `target_contract` on the
 model and include it in MLflow model metadata. It records the implemented
-`log(close_t / close_t_minus_1)` target, per-symbol one-bar steps, and the `log`
-price conversion method. Export rejects a dataset whose target column differs
+`log(close_t / close_t_minus_1)` target, per-symbol one-bar steps, the `log`
+price conversion method, symbols, frequency, feature roles, horizon, quantiles,
+and a dataset-parameter fingerprint. The artifact also carries empirical
+cumulative-residual offsets fitted on validation paths for price quantiles.
+This calibration shares the current validation window with governance; an
+independent calibration/qualification split remains future hardening. Export
+rejects a dataset whose target column differs
 from the implemented `target` column. Serving validates this artifact contract
 at startup and reload; registry tags alone are not authoritative.
 
@@ -98,7 +105,8 @@ Registered versions also receive forecast-semantics tags:
 ## Alias Ownership
 
 - `@challenger`: assigned to every newly registered model by training.
-- `@champion`: assigned by governance after evaluation.
+- `@champion`: assigned by the activation task after approval and successful
+  preparation on every reachable replica.
 - Initial serving bootstrap: serving may assign a missing `@champion` to the
   newest governance-qualified READY version, but it never moves an existing champion.
 
@@ -127,6 +135,13 @@ uv sync --extra training
 uv run python -m polyhorizon.training.flow.model_training_flow
 ```
 
+When no licensed historical source is available, developers may exercise the
+local registry and serving path with `scripts/dev/bootstrap_synthetic_model.py`.
+The command requires an explicit `--allow-synthetic`, refuses remote database
+and MLflow targets, and tags the dataset/run/model as synthetic and ineligible
+for production. It uses a small 64-bar encoder and is not a substitute for the
+180-day governed training flow. See `docs/LOCAL_BACKEND_BOOTSTRAP.md`.
+
 Deploy through Prefect:
 
 ```bash
@@ -151,8 +166,22 @@ quantiles must remain compatible with serving configuration.
 
 ## Operational Notes
 
+Promotion evaluates three chronological, horizon-purged holdout windows. Each
+window must meet sample, no-change baseline, calibration, and configured horizon
+gates. A challenger must also win at least two windows, exceed the aggregate
+score threshold, and respect aggregate and per-window MAE limits. The paired
+evidence is logged to MLflow. Drift checks compare covariates and log-return
+targets per symbol; insufficient samples are inconclusive and fail the
+retraining task rather than silently becoming "no drift".
+
 - MLflow, Postgres, and object storage must be reachable before training starts.
 - The feature snapshot must contain enough history per symbol for the encoder and
   validation windows.
-- A newly registered challenger is not production traffic until governance moves
-  `@champion` and serving reloads the alias or restarts.
+- A newly registered challenger is not production traffic until governance
+  approves it and the activation task completes preparation, alias handover,
+  activation, and readiness checks.
+- CI has a mandatory forecast release gate that trains a small return model,
+  stores its dataset contract and calibration, registers it in a temporary
+  MLflow registry, loads the exact version through serving, and verifies the
+  HTTP forecast response. It is a contract integration test, not a substitute
+  for live Feast/Postgres and multi-replica deployment rehearsal.

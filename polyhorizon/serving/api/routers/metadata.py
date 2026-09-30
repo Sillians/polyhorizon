@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from fastapi import APIRouter, Request
 
 from polyhorizon.serving.api.schemas import ClientMetadataResponse
@@ -16,6 +17,9 @@ def operator_session(request: Request):
         "role": "operator",
         "feature_debug_enabled": config.client_metadata.feature_debug_enabled,
         "model_reload_enabled": config.client_metadata.model_reload_enabled,
+        "grafana_url": os.getenv("SERVING_GRAFANA_URL", ""),
+        "prefect_url": os.getenv("SERVING_PREFECT_URL", ""),
+        "mlflow_url": os.getenv("SERVING_MLFLOW_URL", ""),
     }
 
 

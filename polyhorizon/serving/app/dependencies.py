@@ -23,6 +23,23 @@ class ServingContainer:
     cache: RedisCache
     forecast_service: ForecastService
     reload_lock: Lock
+    prepared_handle: Optional[ModelHandle] = None
+
+    def prepare_version(self, version: str) -> ModelHandle:
+        with self.reload_lock:
+            self.prepared_handle = self.model_registry.load_version(version)
+            return self.prepared_handle
+
+    def activate_prepared(self, version: str) -> ModelHandle:
+        with self.reload_lock:
+            if self.prepared_handle is None or self.prepared_handle.model_version != version:
+                raise ValueError("The requested candidate has not been prepared")
+            if self.model_registry.get_champion_version() != version:
+                raise ValueError("The requested candidate is not the current champion")
+            self.model_handle = self.prepared_handle
+            self.forecast_service.model_handle = self.prepared_handle
+            self.prepared_handle = None
+            return self.model_handle
 
     def reload_champion(self) -> ModelHandle:
         """Atomically load the currently aliased champion into the service."""
