@@ -8,12 +8,15 @@ PolyHorizon collects trades during NYSE market hours, but its product contract i
 frequency describes feature and prediction bars; publication follows completion
 and qualification of the market session.
 
-[![PolyHorizon: collect → publish features → train and govern → serve. Open the interactive architecture map for details.](docs/assets/system-architecture-overview.svg)](docs/architecture.html)
+[![Full colored PolyHorizon architecture: Finnhub and governed universe → Kafka → Spark and Delta → session qualification → PostgreSQL, Feast and Redis → TFT and MLflow governance → FastAPI and frontend, with orchestration and observability.](docs/assets/system-architecture.svg)](docs/assets/system-architecture.svg)
+
+*The full static system map is displayed above. Click it to view at full size.
+Blue = collection; green = feature publication; purple = model lifecycle;
+orange = serving; amber = qualification gates.*
 
 [**Interactive architecture map**](docs/architecture.html): hover over a stage to
 unfold its details; click/tap to pin it open. Keyboard users can Tab to a stage
 and press Enter/Space. Color identifies each phase; amber outlines mark gates.
-The [full static diagram](docs/assets/system-architecture.svg) is also available.
 
 GitHub renders README images statically and shows HTML files as source. To use
 the interactive map, open `docs/architecture.html` directly in your browser from
