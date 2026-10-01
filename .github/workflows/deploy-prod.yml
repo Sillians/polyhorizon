@@ -46,8 +46,9 @@ jobs:
         env:
           IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
         run: |
+          image_repository="${GITHUB_REPOSITORY,,}"
           for image in ingestion spark-streaming features training serving frontend orchestration; do
-            docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}/${image}:${IMAGE_TAG}" >/dev/null
+            docker buildx imagetools inspect "ghcr.io/${image_repository}/${image}:${IMAGE_TAG}" >/dev/null
           done
 
   deploy:

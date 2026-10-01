@@ -39,6 +39,17 @@ Actions run after the changes are pushed.
 
 ## Implemented in this audit
 
+Image build follow-up (2026-10-01): run `36882179700` passed validation but all
+seven image jobs rejected `ghcr.io/Sillians/polyhorizon/...` before building.
+Docker requires lowercase image repository names. The build job now normalizes
+GitHub's repository value before creating tags; release manifests, their bundled
+environment template, and deployment image-existence checks use the same lowercase
+path. Commit SHA tags and source-repository labels retain their original values.
+The regression test exercises the workflow normalization, manifest generation,
+and deployment inspection commands with `Sillians/PolyHorizon`, verifying that
+all seven image references agree. It passes alongside Ruff, shell syntax, and the
+release contract validator; publishing still requires the next GitHub Actions run.
+
 | Area | Previous state | Implemented state |
 |---|---|---|
 | Pull-request gate | Python checks only; no Compose, shell, release-contract, or frontend gate | Blocking Python tests/lint, frontend test/build, shell syntax, Compose rendering, and release-contract validation |
