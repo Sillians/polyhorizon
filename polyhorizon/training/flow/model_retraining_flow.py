@@ -4,6 +4,7 @@ import mlflow
 from prefect import flow, get_run_logger
 
 from polyhorizon.training.configs.settings import load_config, Config
+from polyhorizon.training.utils.logger import configure_logging
 from polyhorizon.training.tasks.model_retraining_tasks import (
     drift_detection_task,
     get_last_best_params,
@@ -44,6 +45,7 @@ def model_retraining_flow(
 ) -> Dict[str, Any]:
     logger = get_run_logger()
     config: Config = load_config(config_path)
+    configure_logging(config.logging)
 
     logger.info("Starting retraining flow with drift detection.")
 

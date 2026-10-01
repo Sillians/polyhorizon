@@ -222,8 +222,7 @@ node_modules/
 dist/
 .vite/
 
-# prod env file
-.env.prod
+# Real deployment credentials stay local; sanitized templates are tracked.
 .env.prod
 
 # Self-hosted GitHub Actions runner state and credentials

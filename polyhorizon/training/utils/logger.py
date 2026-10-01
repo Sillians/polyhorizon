@@ -9,13 +9,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-from polyhorizon.training.configs.settings import load_config
+from polyhorizon.training.configs.settings import LoggingConfig
 
 # Service identification
 SERVICE_NAME = "polyhorizon.model_training"
 
 # Global state
-_setup_done = False
 _loggers: Dict[str, logging.Logger] = {}
 
 
@@ -67,17 +66,19 @@ def _get_log_level(level: str) -> int:
     return getattr(logging, level.upper(), logging.INFO)
 
 
-def _setup_root_logger() -> None:
-    global _setup_done
-    if _setup_done:
-        return
-    
-    config = load_config()
-    log_config = config.logging
+def configure_logging(log_config: LoggingConfig) -> None:
+    """Configure training logging after the entrypoint validates its config.
+
+    Logger acquisition must not require database or MLflow credentials. Keep
+    handlers on the service logger so Prefect/root handlers remain intact.
+    """
     log_level = _get_log_level(log_config.log_level)
-    root_logger = logging.getLogger()
+    root_logger = logging.getLogger(SERVICE_NAME)
     root_logger.setLevel(log_level)
-    root_logger.handlers.clear()
+    root_logger.propagate = False
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+        handler.close()
     
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -130,12 +131,10 @@ def _setup_root_logger() -> None:
     for noisy in ["urllib3", "requests", "boto3", "botocore", "feast", "fsspec", "s3fs", "torch", "pytorch_lightning", "lightning"]:
         logging.getLogger(noisy).setLevel(logging.WARNING)
     
-    _setup_done = True
     logging.getLogger(f"{SERVICE_NAME}.init").info(f"Logging initialized for {SERVICE_NAME}")
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
-    _setup_root_logger()
     full_name = f"{SERVICE_NAME}.{name}" if name and not name.startswith(SERVICE_NAME) else name or SERVICE_NAME
     if full_name not in _loggers:
         _loggers[full_name] = logging.getLogger(full_name)

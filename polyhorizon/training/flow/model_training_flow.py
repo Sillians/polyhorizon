@@ -4,6 +4,7 @@ import time
 import mlflow
 from prefect import flow, get_run_logger
 from polyhorizon.training.configs.settings import load_config, Config
+from polyhorizon.training.utils.logger import configure_logging
 from polyhorizon.training.utils.metrics import TrainingMetricsPublisher
 from polyhorizon.training.tasks.model_training_tasks import (
     read_data,
@@ -42,6 +43,7 @@ def model_training_flow(
 ) -> Dict[str, Any]:
     logger = get_run_logger()
     config: Config = load_config(config_path)
+    configure_logging(config.logging)
     metrics_publisher = TrainingMetricsPublisher(config.monitoring)
     start_time = time.time()
     model_metadata: Dict[str, Any] | None = None

@@ -10,10 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL")
-DEFAULT_LOG_DIR = os.environ.get("DEFAULT_LOG_DIR")
-DEFAULT_LOG_FORMAT = os.environ.get("DEFAULT_LOG_FORMAT")
-DEFAULT_DATE_FORMAT = os.environ.get("DEFAULT_DATE_FORMAT")
+DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL") or "INFO"
+DEFAULT_LOG_DIR = os.environ.get("DEFAULT_LOG_DIR") or "logs"
+DEFAULT_LOG_FORMAT = os.environ.get("DEFAULT_LOG_FORMAT") or "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+DEFAULT_DATE_FORMAT = os.environ.get("DEFAULT_DATE_FORMAT") or "%Y-%m-%d %H:%M:%S"
 LOG_TO_FILE = os.environ.get("LOG_TO_FILE")
 MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", 10485760)) 
 BACKUP_COUNT = int(os.environ.get("BACKUP_COUNT", 5)) 
@@ -43,13 +43,13 @@ class ColoredFormatter(logging.Formatter):
 
 def get_log_level() -> int:
     """Get log level from environment variable or default."""
-    level_name = os.getenv("LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
+    level_name = (os.getenv("LOG_LEVEL") or DEFAULT_LOG_LEVEL).upper()
     return getattr(logging, level_name, logging.INFO)
 
 
 def get_log_dir() -> Path:
     """Get log directory from environment variable or default."""
-    log_dir = os.getenv("LOG_DIR", DEFAULT_LOG_DIR)
+    log_dir = os.getenv("LOG_DIR") or DEFAULT_LOG_DIR
     if not os.path.isabs(log_dir):
         project_root = Path(__file__).parent.parent
         log_dir = project_root / log_dir
@@ -62,7 +62,7 @@ def get_log_dir() -> Path:
 
 def should_log_to_file() -> bool:
     """Check if file logging is enabled."""
-    return os.getenv("LOG_TO_FILE", "true").lower() in ("true", "1", "yes", "on")
+    return os.getenv("LOG_TO_FILE", "false").lower() in ("true", "1", "yes", "on")
 
 
 def setup_logging() -> None:
@@ -226,5 +226,4 @@ def log_config_info() -> None:
     logger.info(f"  Setup Complete: {_setup_done}")
 
 
-# Initialize logging when module is imported
-setup_logging()
+# Call setup_logging() or get_logger() when logging is needed.

@@ -23,6 +23,9 @@ jobs:
   validate:
     name: Validate source and release contracts
     runs-on: ubuntu-latest
+    env:
+      # CI must never depend on a developer's ignored .env file.
+      PYTHON_DOTENV_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +59,10 @@ jobs:
         run: bash -n scripts/deploy/*.sh
 
       - name: Validate production Compose model
-        run: docker compose --env-file .env.prod.template -f docker-compose.prod.yaml config --quiet
+        run: |
+          # Service env_file entries need a file too; use only sanitized placeholders.
+          cp .env.prod.template .env.prod
+          docker compose --env-file .env.prod.template -f docker-compose.prod.yaml config --quiet
 
       - name: Validate release image contract
         run: uv run python scripts/ci/validate_release_contract.py

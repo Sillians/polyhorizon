@@ -2,6 +2,41 @@
 
 Audit date: 2026-07-22
 
+## Clean-checkout configuration fix (2026-10-01)
+
+Run `36875635333` failed in Python test collection. A clean copy reproduced
+two import-time problems that the developer's ignored `.env` concealed:
+core logging called `.upper()` on an unset level, and acquiring a training
+logger loaded the entire training configuration, including database and MLflow
+settings.
+
+Core logging now has built-in defaults and defaults to console output. Training
+logger acquisition no longer loads configuration. Training and retraining flows
+explicitly configure their service logger with the validated `config.logging`,
+including custom config paths, without replacing Prefect/root handlers. Actual
+training configuration remains strict: missing required settings still fail when
+the flow loads its configuration.
+
+The validation job sets `PYTHON_DOTENV_DISABLED=1`. Tests must supply their own
+settings or mocks; CI does not copy a deployment template into `.env` and does
+not need production credentials. Regression tests exercise logging in a child
+process with no service environment and verify explicit logging configuration.
+
+Commit `.env.example` and `.env.prod.template` with placeholders only. Keep `.env`
+and `.env.prod` ignored. Both templates are tracked as of commit `74a585d`; the
+production template is required by Compose and the deployment contract checks.
+The Compose validation step copies the sanitized template to the ephemeral
+runner's `.env.prod` because service-level `env_file` entries still require that
+file even when `--env-file .env.prod.template` supplies interpolation values.
+
+Verification used an archive of the current commit with these changes overlaid,
+without the developer's `.env`, and with `PYTHON_DOTENV_DISABLED=1`: 244 tests
+passed, 5 opt-in integration tests skipped, and the separate forecast release
+gate passed. Ruff, deployment shell syntax, production Compose rendering, and
+all six architecture contract validators passed. These were local checks using
+the installed Python 3.11 environment; the updated workflow still needs a GitHub
+Actions run after the changes are pushed.
+
 ## Implemented in this audit
 
 | Area | Previous state | Implemented state |
