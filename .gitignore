@@ -205,3 +205,39 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+notreadme.md
+notreadme.md/
+*notreadme.md
+notreadme.md
+
+
+notes.md
+notes.md/*
+notes./*
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# prod env file
+.env.prod
+.env.prod
+
+# Self-hosted GitHub Actions runner state and credentials
+actions-runner/
+
+
+github-actions-runner.md
+github-actions-runner.md/*
+
+# Runtime notification secrets
+monitoring/secrets/*
+!monitoring/secrets/*.example
+
+# Isolated recovery outputs (regenerate from retained Kafka offsets).
+/artifacts/recovery/
+/artifacts/market-supervisor/
+/artifacts/low-memory/

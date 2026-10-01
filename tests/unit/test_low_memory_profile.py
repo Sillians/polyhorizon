@@ -45,6 +45,13 @@ def test_replica_migration_preserves_topics_and_partition_numbers():
     assert verified(metadata)
 
 
+@pytest.mark.parametrize("low_memory", [False, True])
+def test_ingestion_deployment_requires_manual_commits(low_memory):
+    specs = specifications("/repo/.env", "network", low_memory=low_memory)
+    ingestion = next(s for s in specs if s["name"] == "ingestion-market-hours")
+    assert ingestion["job_variables"]["env"]["KAFKA_ENABLE_AUTO_COMMIT"] == "false"
+
+
 def test_unsynchronized_migration_is_refused():
     with pytest.raises(RuntimeError, match="in sync"):
         assignments([{"topic": "t", "partitions": [{"partition": 0, "leader": 1, "replicas": [1, 2, 3], "isr": [1, 2]}]}])

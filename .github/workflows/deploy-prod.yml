@@ -1,0 +1,101 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Released immutable tag (sha-<40-character commit SHA>)"
+        required: true
+        type: string
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate-release:
+    name: Validate release exists
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - name: Validate immutable tag
+        id: tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          if [[ ! "$IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]; then
+            echo "image_tag must be sha- followed by a full 40-character commit SHA" >&2
+            exit 1
+          fi
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify every release image is available
+        env:
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+        run: |
+          for image in ingestion spark-streaming features training serving frontend orchestration; do
+            docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}/${image}:${IMAGE_TAG}" >/dev/null
+          done
+
+  deploy:
+    name: Deploy and verify
+    needs: validate-release
+    runs-on: self-hosted
+    environment:
+      name: production
+      url: https://${{ vars.POLYHORIZON_DOMAIN }}
+    timeout-minutes: 30
+    steps:
+      - name: Require deployment configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH DEPLOY_SSH_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing production secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Deploy through guarded release script
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          RELEASE_TAG: ${{ needs.validate-release.outputs.image_tag }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: RELEASE_TAG
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            cd '${{ secrets.DEPLOY_PATH }}'
+            COMPOSE_FILE=docker-compose.prod.yaml \
+              ENV_FILE=.env.prod \
+              scripts/deploy/deploy_release.sh "$RELEASE_TAG"
+
+      - name: Record deployment summary
+        env:
+          IMAGE_TAG: ${{ needs.validate-release.outputs.image_tag }}
+        run: |
+          {
+            echo "## Production deployment"
+            echo ""
+            echo "Deployed \`${IMAGE_TAG}\` to the production environment."
+          } >> "$GITHUB_STEP_SUMMARY"

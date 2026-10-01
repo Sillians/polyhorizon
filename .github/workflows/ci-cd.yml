@@ -1,0 +1,174 @@
+name: PolyHorizon CI and Release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  UV_VERSION: "0.8.22"
+
+jobs:
+  validate:
+    name: Validate source and release contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: python -m pip install "uv==${UV_VERSION}"
+
+      - name: Install locked dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Verify lock file
+        run: uv lock --check
+
+      - name: Lint
+        run: uv run python -m ruff check polyhorizon tests
+
+      - name: Type check (advisory until the existing baseline is clean)
+        continue-on-error: true
+        run: uv run python -m mypy polyhorizon
+
+      - name: Unit and integration tests
+        run: uv run python -m pytest -q --ignore=tests/integration/forecast/test_forecast_release_gate.py
+
+      - name: Forecast release gate (train, register, serve)
+        run: uv run python -m pytest -q tests/integration/forecast/test_forecast_release_gate.py
+
+      - name: Validate deployment shell scripts
+        run: bash -n scripts/deploy/*.sh
+
+      - name: Validate production Compose model
+        run: docker compose --env-file .env.prod.template -f docker-compose.prod.yaml config --quiet
+
+      - name: Validate release image contract
+        run: uv run python scripts/ci/validate_release_contract.py
+
+      - name: Validate ML deployment contract
+        run: uv run python scripts/ci/validate_deployment_contract.py
+
+      - name: Validate S&P 500 universe contract
+        run: uv run python scripts/ci/validate_universe_contract.py
+
+      - name: Validate Prefect orchestration contract
+        run: uv run python scripts/ci/validate_prefect_contract.py
+
+      - name: Validate PostgreSQL ML-system contract
+        run: uv run python scripts/ci/validate_postgres_contract.py
+
+      - name: Validate observability and edge-routing contract
+        run: uv run python scripts/ci/validate_observability_contract.py
+
+  frontend:
+    name: Test frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: polyhorizon/frontend/package-lock.json
+      - run: npm ci
+        working-directory: polyhorizon/frontend
+      - run: npm test
+        working-directory: polyhorizon/frontend
+      - run: npm run build
+        working-directory: polyhorizon/frontend
+
+  universe-image-smoke:
+    name: Smoke-test universe in ingestion image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ingestion and universe runtime
+        run: docker build -f docker/ingestion/Dockerfile -t polyhorizon-ingestion:smoke .
+      - name: Check deployed universe entrypoint without network
+        run: docker run --rm --network none polyhorizon-ingestion:smoke python scripts/ci/smoke_universe_entrypoint.py
+
+  build-images:
+    name: Build ${{ matrix.name }} image
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [validate, frontend, universe-image-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ingestion
+            dockerfile: docker/ingestion/Dockerfile
+          - name: spark-streaming
+            dockerfile: docker/spark/Dockerfile
+          - name: features
+            dockerfile: docker/features/Dockerfile
+          - name: training
+            dockerfile: docker/training/Dockerfile
+          - name: serving
+            dockerfile: docker/serving/Dockerfile
+          - name: frontend
+            dockerfile: docker/frontend/Dockerfile
+          - name: orchestration
+            dockerfile: docker/app/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish immutable image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.name }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          provenance: mode=max
+          sbom: true
+
+  release:
+    name: Publish release manifest
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate release metadata
+        env:
+          RELEASE_TAG: sha-${{ github.sha }}
+        run: scripts/ci/create_release_manifest.sh release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: polyhorizon-release-sha-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30

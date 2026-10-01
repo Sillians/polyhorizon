@@ -1,0 +1,180 @@
+[project]
+name = "polyhorizon"
+version = "0.1.0"
+description = "Multi-horizon time series forecasting platform"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+
+[project.optional-dependencies]
+core = [
+    "python-dotenv>=1.2.1"
+]
+sp500_data = [
+    "boto3>=1.42.34",
+    "botocore>=1.42.34",
+    "beautifulsoup4>=4.14.3",
+    "requests>=2.32.5",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+ingestion = [
+    "boto3>=1.42.34",
+    "botocore>=1.42.34",
+    "kafka-python>=2.2.15",
+    "requests",
+    "tenacity",
+    "websockets>=12.0",
+    "pandas>=2.3.3",
+    "pandas-market-calendars>=5.3.0",
+    "prefect>=3.5.0",
+    "prometheus-client",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+streaming = [
+    "boto3>=1.42.34",
+    "pyspark==3.5.7",
+    "kafka-python",
+    "delta-spark==3.3.2",
+    "deltalake>=1.4.0",
+    "prefect>=3.5.0",
+    "prometheus-client",
+    "pandas-market-calendars>=5.3.0",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+features = [
+    "deltalake>=1.4.0",
+    "boto3>=1.42.34",
+    "feast[postgres,redis,sql]",
+    "great-expectations[postgresql,spark]>=1.11.2",
+    "psycopg2-binary>=2.9.11",
+    "redis>=4.6.0",
+    "prometheus-client",
+    "scipy>=1.12.0",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+training = [
+    "evidently>=0.7.20",
+    "holidays>=0.89",
+    "lightning>=2.6.1",
+    "mlflow>=3.9.0",
+    "optuna>=4.7.0",
+    "optuna-integration>=4.7.0",
+    "pandas-market-calendars>=5.3.0",
+    "prefect>=3.5.0",
+    "prefect-email>=0.4.2",
+    "pytorch-forecasting>=1.6.1",
+    "pytorch-lightning>=2.6.1",
+    "scikit-learn>=1.8.0",
+    "tensorboard>=2.20.0",
+    "torch>=2.10.0",
+    "tracely>=0.2.12",
+    "xgboost>=3.1.3",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+serving = [
+    "boto3>=1.42.34",
+    "fastapi",
+    "uvicorn",
+    "feast[postgres,redis,sql]",
+    "mlflow>=3.9.0",
+    "redis>=4.6.0",
+    "prometheus-client",
+    "psycopg2-binary>=2.9.11",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "torch>=2.10.0",
+    "pytorch-forecasting>=1.6.1",
+    "pandas-market-calendars>=5.3.0",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+monitoring = [
+    "evidently",
+    "prometheus-client",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+]
+flows = [
+    "prefect>=3.5.0",
+    "pydantic>=2.6",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv>=1.2.1",
+    "pandas>=2.3.3",
+    "numpy>=2.4.1",
+    "pyyaml>=6.0.3",
+    "prefect-email>=0.4.2",
+    "prefect>=3.5.0",
+]
+
+dev = [
+    "pytest",
+    "ruff",
+    "mypy",
+    "black>=26.1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["polyhorizon*"]
+exclude = ["docker*", "monitoring*"]

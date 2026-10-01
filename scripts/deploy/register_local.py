@@ -18,6 +18,7 @@ def specifications(env_file, network, low_memory=False):
               "FEATURES_PUSHGATEWAY_URL": "http://prometheus-pushgateway:9091",
               "UNIVERSE_CURRENT_KEY": "universe/current.json", "UNIVERSE_MAX_AGE_HOURS": "30",
               "MAX_TOTAL_SYMBOLS": "3", "MAX_SYMBOLS_PER_CONNECTION": "3",
+              "KAFKA_ENABLE_AUTO_COMMIT": "false",
               "SP500_URL": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
               "LOG_TO_FILE": "false"}
     definitions = [
