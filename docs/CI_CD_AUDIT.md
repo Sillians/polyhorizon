@@ -39,6 +39,21 @@ Actions run after the changes are pushed.
 
 ## Implemented in this audit
 
+Orchestration build follow-up (2026-10-02): run `36907075040` built six images
+but failed orchestration at `COPY main.py`, because the root placeholder script
+was never tracked. The orchestration image now defaults to the Prefect CLI and
+does not depend on that local file. Production continues to override the command
+with `uv run prefect deploy --all` through `deploy_prefect_flows.sh`.
+The build also installs `prefect-docker` explicitly into `/app/.venv`, the
+interpreter used by deployment. Previously `UV_SYSTEM_PYTHON=1` directed that
+installation into system Python instead. Build-time smoke checks now import
+the Docker worker through `uv run` and exercise the Prefect CLI.
+Verification from a clean tracked-source archive on local ARM64 passed every
+Dockerfile build step, including both smoke checks, plus the Prefect and release
+contract validators. Final image export/unpacking was blocked by Docker disk
+exhaustion; the temporary verification images and their large cache layers were
+removed. A complete image build/publish still needs confirmation in GitHub CI.
+
 Image build follow-up (2026-10-01): run `36882179700` passed validation but all
 seven image jobs rejected `ghcr.io/Sillians/polyhorizon/...` before building.
 Docker requires lowercase image repository names. The build job now normalizes

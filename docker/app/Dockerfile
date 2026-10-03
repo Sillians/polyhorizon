@@ -13,10 +13,13 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock README.md /app/
 RUN uv sync --frozen --all-extras \
-    && uv pip install "prefect-docker>=0.6,<0.7"
+    && uv pip install --python /app/.venv/bin/python "prefect-docker>=0.6,<0.7"
 
 COPY polyhorizon /app/polyhorizon
-COPY main.py /app/main.py
 COPY prefect.yaml /app/prefect.yaml
 
-CMD ["python", "-m", "main"]
+RUN uv run --frozen python -c "from prefect_docker.worker import DockerWorker; assert DockerWorker.type == 'docker'" \
+    && uv run --frozen prefect --help > /dev/null
+
+# Deployment overrides this command with `uv run prefect deploy ...`.
+CMD ["uv", "run", "--frozen", "prefect", "--help"]
