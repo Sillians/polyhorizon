@@ -240,3 +240,15 @@ monitoring/secrets/*
 /artifacts/recovery/
 /artifacts/market-supervisor/
 /artifacts/low-memory/
+
+# System audit
+SYSTEM_AUDIT.md
+SYSTEM_AUDIT.md/*
+
+# MLflow
+mlruns/
+mlruns/*
+
+# Feast
+feast_repo/
+feast_repo/*
