@@ -6,6 +6,7 @@ from uuid import UUID
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from polyhorizon.core.historical_qualification import HistoricalSource
 
 
 def canonical_path(path: str) -> str:
@@ -19,6 +20,7 @@ def publication_source_query(schema: str, table: str) -> str:
     return (
         f"SELECT * FROM {schema}.{table} WHERE dataset_version = "
         f"(SELECT dataset_id FROM {schema}.dataset_publications "
+        "WHERE (manifest->'historical_source' IS NULL OR manifest->'historical_source' = 'null'::jsonb) "
         "ORDER BY max_event_time DESC, updated_at DESC LIMIT 1)"
     )
 
@@ -44,6 +46,7 @@ class DatasetRelease(BaseModel):
     max_event_time: datetime
     row_count: int = Field(gt=0)
     session_qualification: dict | None = None
+    historical_source: HistoricalSource | None = None
 
     @model_validator(mode="after")
     def validate_times(self):

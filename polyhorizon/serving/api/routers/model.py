@@ -59,8 +59,9 @@ def prepare_candidate(body: VersionRequest, container: ServingContainer = Depend
         registered = container.model_registry.client.get_model_version(
             container.config.model_registry.name, version
         )
+        from polyhorizon.core.historical_qualification import QUALIFIED_POLICIES
         if ((registered.tags or {}).get("governance_qualification") != "passed-v1" or
-                (registered.tags or {}).get("session_qualification") != "nyse-full-session-v1"):
+                (registered.tags or {}).get("session_qualification") not in QUALIFIED_POLICIES):
             raise ValueError("Candidate has not passed governance qualification")
         handle = container.prepare_version(version)
         return ModelReloadResponse(model_version=handle.model_version,

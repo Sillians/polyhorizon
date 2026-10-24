@@ -62,15 +62,28 @@ class PostgresDataLoader:
         days = int(self.config.data.min_days_required)
         if days <= 0:
             raise ValueError("Training lookback must be positive")
+        columns = ("symbol", "window_start", "window_end", "event_timestamp", "open", "high", "low", "close",
+                   "total_volume", "rolling_avg_close", "rolling_volatility_close", "dataset_version", "created_at")
+        fields = ", ".join(columns)
+        selected = ", ".join("snapshot." + column for column in columns)
         return f"""
-        SELECT snapshot.*
-        FROM {self.fully_qualified_table} AS snapshot
+        SELECT DISTINCT ON (snapshot.symbol, snapshot.window_start) {selected}
+        FROM (
+            SELECT {fields}, 0 AS source_priority FROM {self.fully_qualified_table}
+            UNION ALL
+            SELECT {fields}, 1 AS source_priority FROM {self.fully_qualified_table}_historical
+        ) AS snapshot
         JOIN {self.schema}.dataset_publications AS publication
           ON snapshot.dataset_version = publication.dataset_id
         WHERE publication.status = 'complete'
-          AND publication.manifest->'session_qualification'->>'policy' = 'nyse-full-session-v1'
+          AND publication.manifest->'session_qualification'->>'policy' IN ('nyse-full-session-v1', 'nyse-historical-bars-v1')
           AND publication.manifest->'session_qualification'->>'status' = 'passed'
-          AND event_timestamp >= NOW() - INTERVAL '{days} days';
+          AND (publication.manifest->'historical_source' IS NULL
+               OR publication.manifest->'historical_source' = 'null'::jsonb
+               OR publication.manifest->'historical_source'->>'adjustment' = 'unadjusted')
+          AND event_timestamp >= NOW() - INTERVAL '{days} days'
+          AND event_timestamp <= NOW()
+        ORDER BY snapshot.symbol, snapshot.window_start, snapshot.source_priority;
         """
     
     # -----------------------
@@ -88,6 +101,12 @@ class PostgresDataLoader:
 
         if df.empty:
             raise ValueError("Training requires a completed, full-session-qualified publication")
+        minimum = int(getattr(self.config.data, "min_history_sessions", 60))
+        sessions = pd.to_datetime(df.event_timestamp, utc=True).dt.tz_convert("America/New_York").dt.date
+        counts = df.assign(session=sessions).groupby("symbol").session.nunique()
+        from polyhorizon.core.product_symbols import PRODUCT_SYMBOLS
+        if any(counts.get(symbol, 0) < minimum for symbol in PRODUCT_SYMBOLS):
+            raise ValueError(f"Training requires at least {minimum} qualified sessions per product symbol; got {counts.to_dict()}")
 
         if track_mlflow and not df.empty:
             self._log_to_mlflow(df, query)
@@ -95,7 +114,7 @@ class PostgresDataLoader:
         return df
 
     def _log_to_mlflow(self, df, query):
-        mlflow.set_tag("session_qualification", "nyse-full-session-v1")
+        mlflow.set_tag("session_qualification", "nyse-qualified-data-v1")
         mlflow.set_tag("qualified_dataset_versions", ",".join(sorted(set(df.dataset_version.astype(str)))))
         dataset = mlflow.data.from_pandas(df, source=query, name=f"{self.snapshot_table_name}_snapshot")
         mlflow.log_input(dataset, context="training_source")
@@ -181,4 +200,3 @@ class PostgresDataLoader:
         df_cur = filter_product_frame(pd.read_sql(query_cur, engine))
         
         return df_ref, df_cur
-

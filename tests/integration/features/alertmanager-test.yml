@@ -1,0 +1,11 @@
+route:
+  receiver: local-drill
+  group_by: [alertname, drill_id]
+  group_wait: 1s
+  group_interval: 1s
+  repeat_interval: 1h
+receivers:
+  - name: local-drill
+    webhook_configs:
+      - url: http://host.docker.internal:18081/alerts
+        send_resolved: true

@@ -1,5 +1,11 @@
 name: polyhorizon-publication-test
 services:
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    command: [--config.file=/etc/alertmanager/test.yml]
+    volumes: [./alertmanager-test.yml:/etc/alertmanager/test.yml:ro]
+    ports: ["127.0.0.1:19093:9093"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
   postgres:
     image: postgres:15-alpine
     environment:

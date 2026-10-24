@@ -25,5 +25,7 @@ RUN uv sync --frozen --extra features
 
 COPY polyhorizon /app/polyhorizon
 COPY prefect.yaml /app/prefect.yaml
+COPY scripts/ops/backfill_history.py /app/scripts/ops/backfill_history.py
+RUN .venv/bin/python -c "from polyhorizon.ingestion.historical_backfill import historical_backfill_flow"
 
 ENV PYTHONPATH=/app PATH="/app/.venv/bin:${PATH}"

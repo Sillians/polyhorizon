@@ -45,7 +45,7 @@ class InMemoryCache:
         return None
 
 
-def test_trained_artifact_serves_calibrated_forecast(tmp_path, monkeypatch):
+def build_trained_fixture(tmp_path, monkeypatch):
     config_path = Path(__file__).parents[2] / "unit/serving/serving_test_config.yaml"
     config = load_config(config_path)
     config.mlflow.tracking_uri = tmp_path.as_uri()
@@ -118,7 +118,18 @@ def test_trained_artifact_serves_calibrated_forecast(tmp_path, monkeypatch):
                               SimpleNamespace(get_feature_window=lambda *_: history),
                               InMemoryCache())
     app = create_app(config_path=str(config_path), init_container=False)
+    from threading import Lock
+    from polyhorizon.serving.app.dependencies import ServingContainer
+    app.state.config = config
+    app.state.container = ServingContainer(config=config, model_registry=ModelRegistryClient(config),
+        model_handle=handle, feature_store=service.feature_store, cache=service.cache,
+        forecast_service=service, reload_lock=Lock())
     app.dependency_overrides[get_forecast_service] = lambda: service
+    return app, registered
+
+
+def test_trained_artifact_serves_calibrated_forecast(tmp_path, monkeypatch):
+    app, registered = build_trained_fixture(tmp_path, monkeypatch)
     response = TestClient(app).post("/v1/forecast", json={"symbol": "NVDA", "horizon": 3,
                                                         "use_cache": False})
     assert response.status_code == 200, response.text

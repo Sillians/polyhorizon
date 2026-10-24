@@ -1,5 +1,10 @@
 # Recovery and operational qualification
 
+For the historical training-only contract, repeatable browser rehearsal, local
+restore/alert evidence, and outstanding production sign-off requirements, see
+[Historical backfill and readiness rehearsal](HISTORICAL_BACKFILL_REHEARSAL.md).
+Historical bar qualification is separate from the live tick-continuity gate below.
+
 ## Full-session release gate (2026-09-29)
 
 Verification: 67 targeted unit tests passed across the session, publication,

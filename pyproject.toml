@@ -77,6 +77,8 @@ streaming = [
     "prefect>=3.5.0",
 ]
 features = [
+    "pandas-market-calendars>=5.3.0",
+    "requests>=2.32.5",
     "deltalake>=1.4.0",
     "boto3>=1.42.34",
     "feast[postgres,redis,sql]",

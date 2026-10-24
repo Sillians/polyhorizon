@@ -7,6 +7,7 @@ from typing import Optional
 import mlflow
 from mlflow.tracking import MlflowClient
 from polyhorizon.core.target_contract import validate_target_contract
+from polyhorizon.core.historical_qualification import QUALIFIED_POLICIES
 
 from polyhorizon.serving.configs.settings import Config
 from polyhorizon.serving.utils.logger import get_logger
@@ -59,7 +60,7 @@ class ModelRegistryClient:
             for version in versions
             if str(getattr(version, "status", "READY")).upper() == "READY"
             and (getattr(version, "tags", {}) or {}).get("governance_qualification") == "passed-v1"
-            and (getattr(version, "tags", {}) or {}).get("session_qualification") == "nyse-full-session-v1"
+            and (getattr(version, "tags", {}) or {}).get("session_qualification") in QUALIFIED_POLICIES
         ]
         if not ready:
             raise RuntimeError(

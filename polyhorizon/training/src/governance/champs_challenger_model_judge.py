@@ -317,12 +317,16 @@ class ModelJudge:
         """Record approval; traffic activation owns the champion alias move."""
         candidate = self.client.get_model_version(self.model_name, str(version))
         run = self.client.get_run(candidate.run_id)
-        if run.data.tags.get("session_qualification") != "nyse-full-session-v1":
+        from polyhorizon.core.historical_qualification import QUALIFIED_POLICIES
+        if run.data.tags.get("session_qualification") not in QUALIFIED_POLICIES:
             raise ValueError("Model requires training lineage from a qualified market session")
         self.client.set_model_version_tag(
             name=self.model_name, version=version,
-            key="session_qualification", value="nyse-full-session-v1",
+            key="session_qualification", value=run.data.tags["session_qualification"],
         )
+        if run.data.tags.get("qualified_dataset_versions"):
+            self.client.set_model_version_tag(name=self.model_name, version=version,
+                key="qualified_dataset_versions", value=run.data.tags["qualified_dataset_versions"])
         self.client.set_model_version_tag(
             name=self.model_name, version=version,
             key="governance_qualification", value="passed-v1",

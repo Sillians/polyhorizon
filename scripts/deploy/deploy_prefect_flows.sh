@@ -17,6 +17,12 @@ done < <(python3 "$(dirname "$0")/load_env.py" "$ENV_FILE")
 
 PREFECT_JOB_ENV_FILE="${PREFECT_JOB_ENV_FILE:-${DEPLOY_PATH}/.env.prod}"
 export PREFECT_JOB_ENV_FILE
+PREFECT_BACKFILL_CACHE_DIR="${PREFECT_BACKFILL_CACHE_DIR:-${DEPLOY_PATH}/backfill-cache}"
+export PREFECT_BACKFILL_CACHE_DIR
+if [[ "$PREFECT_BACKFILL_CACHE_DIR" != /* || ! -d "$PREFECT_BACKFILL_CACHE_DIR" ]]; then
+  echo "Create an absolute durable PREFECT_BACKFILL_CACHE_DIR before registering flows." >&2
+  exit 1
+fi
 if [[ ! -f "$PREFECT_JOB_ENV_FILE" ]]; then
   echo "Prefect job environment file does not exist: ${PREFECT_JOB_ENV_FILE}" >&2
   exit 1
@@ -55,6 +61,7 @@ docker run --rm \
   -e "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" \
   -e "IMAGE_TAG=$IMAGE_TAG" \
   -e "PREFECT_JOB_ENV_FILE=$PREFECT_JOB_ENV_FILE" \
+  -e "PREFECT_BACKFILL_CACHE_DIR=$PREFECT_BACKFILL_CACHE_DIR" \
   "ghcr.io/${GITHUB_REPOSITORY}/orchestration:${IMAGE_TAG}" \
   uv run prefect --no-prompt deploy --all --prefect-file /app/prefect.yaml
 

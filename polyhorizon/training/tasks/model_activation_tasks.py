@@ -67,7 +67,8 @@ def activate_champion_task(
     name = config.model_registry.name
     alias = config.model_registry.champion_alias
     candidate = client.get_model_version(name, expected_version)
-    if (candidate.tags or {}).get("session_qualification") != "nyse-full-session-v1":
+    from polyhorizon.core.historical_qualification import QUALIFIED_POLICIES
+    if (candidate.tags or {}).get("session_qualification") not in QUALIFIED_POLICIES:
         raise ValueError("Candidate lacks full-session-qualified training lineage")
     if (candidate.tags or {}).get("governance_qualification") != "passed-v1":
         raise ValueError("Candidate has not passed governance qualification")

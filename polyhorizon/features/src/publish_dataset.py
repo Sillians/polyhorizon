@@ -13,6 +13,7 @@ from deltalake import DeltaTable
 
 from polyhorizon.core.dataset_release import DatasetRelease, canonical_path, validate_feature_frame
 from polyhorizon.core.session_qualification import qualify_session, qualify_trades
+from polyhorizon.core.historical_qualification import qualify_historical_bars
 from polyhorizon.features.configs.settings import load_config
 from polyhorizon.features.src.parquet_to_postgres import (
     _validate_identifier, validate_data_contract, add_missing_columns,
@@ -66,6 +67,19 @@ def read_release(release, config):
     validate_data_contract(frame, config)
     gold = DeltaTable(canonical_path(release.gold_path), version=release.gold_version,
                       storage_options=options).to_pandas()
+    if release.historical_source is not None:
+        if release.bronze_path != release.gold_path or release.bronze_version != release.gold_version:
+            raise ValueError("Historical raw lineage must identify the qualified bar table")
+        evidence = qualify_historical_bars(gold, release.historical_source)
+        if release.session_qualification != evidence:
+            raise ValueError("Missing or mismatched historical qualification evidence")
+        from polyhorizon.ingestion.historical_backfill import compute_historical_features
+        expected = compute_historical_features(gold, release.lookback_bars)
+        pd.testing.assert_frame_equal(
+            frame[expected.columns].sort_values(["symbol", "window_start"]).reset_index(drop=True),
+            expected.reset_index(drop=True), check_dtype=False, check_exact=False, rtol=1e-12, atol=1e-12,
+        )
+        return frame
     evidence = qualify_session(gold, release.market_close)
     import pyarrow.dataset as ds
     import pyarrow as pa
@@ -91,6 +105,7 @@ def publish_dataset(manifest: dict, apply_changes: bool = False, config=None) ->
     schema = _validate_identifier(config.data.db_schema, "schema")
     offline = _validate_identifier(config.data.offline_table_name, "offline table")
     snapshot = _validate_identifier(config.data.snapshot_table_name, "snapshot table")
+    historical = _validate_identifier(snapshot + "_historical", "historical snapshot")
     ledger = f"{schema}.dataset_publications"
     dataset_id = str(release.dataset_id)
     conn = get_db_conn(config)
@@ -105,16 +120,44 @@ def publish_dataset(manifest: dict, apply_changes: bool = False, config=None) ->
                 dataset_id TEXT PRIMARY KEY, manifest JSONB NOT NULL,
                 status TEXT NOT NULL, max_event_time TIMESTAMPTZ NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now())""")
+            for table in (snapshot, historical):
+                cur.execute(f"CREATE TABLE IF NOT EXISTS {schema}.{table} ({DEFINITION}, PRIMARY KEY(symbol, window_start))")
             cur.execute(f"SELECT manifest, status FROM {ledger} WHERE dataset_id=%s", (dataset_id,))
             previous = cur.fetchone()
-            if previous and previous[0] != release.model_dump(mode="json"):
+            if previous and DatasetRelease.model_validate(previous[0]) != release:
                 raise ValueError("Dataset ID was reused with a different manifest")
             if previous and previous[1] == "complete":
+                conn.commit()  # Also installs the history table for pre-backfill deployments.
                 return {"status": "success", "dataset_id": dataset_id, "already_published": True}
             cur.execute(f"SELECT dataset_id FROM {ledger} WHERE status != 'complete' AND dataset_id != %s", (dataset_id,))
             if cur.fetchone():
                 raise RuntimeError("Retry the pending dataset before publishing another release")
-            cur.execute(f"SELECT MAX(max_event_time) FROM {ledger}")
+            if release.historical_source is not None:
+                if apply_changes:
+                    raise ValueError("Historical publication cannot apply or materialize Feast")
+                cur.execute(f"CREATE TEMP TABLE dataset_stage ({DEFINITION}) ON COMMIT DROP")
+                frame = frame.copy()
+                frame["dataset_version"] = dataset_id
+                buffer = io.StringIO()
+                frame[COLUMNS].to_csv(buffer, index=False, header=False, date_format="%Y-%m-%d %H:%M:%S%z")
+                buffer.seek(0)
+                cur.copy_expert(f"COPY dataset_stage ({','.join(COLUMNS)}) FROM STDIN WITH (FORMAT csv)", buffer)
+                comparisons = " OR ".join(f"old.{c} IS DISTINCT FROM new.{c}" for c in COLUMNS
+                                           if c not in {"dataset_version", "symbol", "window_start"})
+                cur.execute(f"SELECT 1 FROM {schema}.{historical} old JOIN dataset_stage new "
+                            f"USING(symbol,window_start) WHERE {comparisons} LIMIT 1")
+                if cur.fetchone():
+                    raise ValueError("Historical overlap differs; publish a non-overlapping range or migrate explicitly")
+                cur.execute(f"INSERT INTO {schema}.{historical} ({','.join(COLUMNS)}) "
+                            f"SELECT {','.join(COLUMNS)} FROM dataset_stage ON CONFLICT(symbol,window_start) DO NOTHING")
+                cur.execute(f"INSERT INTO {ledger} (dataset_id,manifest,status,max_event_time) "
+                            "VALUES (%s,%s::jsonb,'complete',%s)",
+                            (dataset_id, release.model_dump_json(), release.max_event_time))
+                conn.commit()
+                return {"status": "success", "dataset_id": dataset_id, "rows": release.row_count,
+                        "publication_scope": "training_only", "online_materialized": False}
+            cur.execute(f"SELECT MAX(max_event_time) FROM {ledger} WHERE manifest->'historical_source' IS NULL "
+                        "OR manifest->'historical_source' = 'null'::jsonb")
             latest = cur.fetchone()[0]
             if latest and latest > release.max_event_time:
                 raise ValueError("Cannot publish an older dataset over a newer release")

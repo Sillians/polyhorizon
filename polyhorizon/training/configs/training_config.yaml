@@ -8,7 +8,8 @@ project:
 data:
   parquet_path: "s3://polygonai-data/processed/latest_training.parquet"  # or local path # change this
   min_days_required: 180
-  required_symbols: 2
+  required_symbols: 3
+  min_history_sessions: 60
   db_schema: ${DB_SCHEMA}
   offline_table_name : ${OFFLINE_TABLE_NAME}
   snapshot_table_name: ${SNAPSHOT_TABLE_NAME}

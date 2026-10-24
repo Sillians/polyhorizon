@@ -33,7 +33,8 @@ def test_activation_rejects_missing_session_lineage(monkeypatch):
     client.set_registered_model_alias.assert_not_called()
 
 
-def test_activation_reloads_and_verifies_every_resolved_replica(monkeypatch):
+@pytest.mark.parametrize("policy", ["nyse-full-session-v1", "nyse-historical-bars-v1", "nyse-qualified-data-v1"])
+def test_activation_reloads_and_verifies_every_resolved_replica(monkeypatch, policy):
     monkeypatch.setenv("SERVING_ACTIVATION_MODE", "reload")
     monkeypatch.setenv(
         "SERVING_RELOAD_URL",
@@ -49,7 +50,7 @@ def test_activation_reloads_and_verifies_every_resolved_replica(monkeypatch):
         ],
     )
     client = Mock()
-    client.get_model_version.return_value = SimpleNamespace(tags={"governance_qualification": "passed-v1", "session_qualification": "nyse-full-session-v1"})
+    client.get_model_version.return_value = SimpleNamespace(tags={"governance_qualification": "passed-v1", "session_qualification": policy})
     client.get_model_version_by_alias.return_value = SimpleNamespace(version="8")
     events = []
     client.set_registered_model_alias.side_effect = lambda **kwargs: events.append(("alias", kwargs["version"]))

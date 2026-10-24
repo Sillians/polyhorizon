@@ -219,6 +219,8 @@ notes./*
 
 # Node / Frontend
 node_modules/
+polyhorizon/frontend/test-results/
+polyhorizon/frontend/playwright-report/
 dist/
 .vite/
 
@@ -252,3 +254,8 @@ mlruns/*
 # Feast
 feast_repo/
 feast_repo/*
+
+
+.DS_Store
+/* .DS_Store
+*/ .DS_Store

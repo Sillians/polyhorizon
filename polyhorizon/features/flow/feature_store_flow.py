@@ -27,6 +27,12 @@ def feature_store_flow(
 
     if dataset_release is None:
         raise ValueError("A completed, version-pinned dataset_release is required")
+    if dataset_release.get("historical_source") is not None:
+        if apply_changes or materialize:
+            raise ValueError("Historical publication requires apply_changes=false and materialize=false")
+        # Historical qualification is training-only. Do not report online
+        # freshness or run drift triggers for a deliberately older dataset.
+        return publish_feature_release(dataset_release, False)
     if not materialize:
         raise ValueError("Versioned publication must finish the PostgreSQL to Feast handoff")
     result = publish_feature_release(dataset_release, apply_changes)

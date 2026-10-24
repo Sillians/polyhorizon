@@ -42,10 +42,11 @@ class TFTTrainer:
     
     @log_execution_time
     def train(self, model_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        from polyhorizon.core.historical_qualification import QUALIFIED_POLICIES
         parent = mlflow.active_run()
         if parent is None or self.client.get_run(parent.info.run_id).data.tags.get(
             "session_qualification"
-        ) != "nyse-full-session-v1":
+        ) not in QUALIFIED_POLICIES:
             raise ValueError("Training requires qualified session lineage on the source run")
         # 1. Use an active run if it exists, otherwise start a child run
         # This prevents the 'double run' issue common with PL + MLflow
@@ -56,7 +57,10 @@ class TFTTrainer:
             run_ctx = mlflow.start_run(run_name="tft_training_execution")
 
         with run_ctx as run:
-            mlflow.set_tag("session_qualification", "nyse-full-session-v1")
+            parent_tags = self.client.get_run(parent.info.run_id).data.tags
+            mlflow.set_tag("session_qualification", parent_tags["session_qualification"])
+            if parent_tags.get("qualified_dataset_versions"):
+                mlflow.set_tag("qualified_dataset_versions", parent_tags["qualified_dataset_versions"])
             
             num_cpu = os.cpu_count() or 1
             num_workers = min(self.config.training.num_workers, max(1, num_cpu - 1))

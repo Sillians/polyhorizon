@@ -7,6 +7,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_DEPLOYMENTS = {
+    "historical-backfill-manual",
     "sp500-universe-weekdays",
     "ingestion-market-hours",
     "streaming-market-hours",
@@ -30,6 +31,8 @@ def main() -> None:
 
     for deployment in deployments:
         name = deployment["name"]
+        if name == "historical-backfill-manual" and deployment.get("schedules") != []:
+            raise SystemExit("Historical backfill must be manual, never recurring by default")
         concurrency = deployment.get("concurrency_limit", {})
         if concurrency.get("limit") != 1:
             raise SystemExit(f"{name} must prevent overlapping runs")

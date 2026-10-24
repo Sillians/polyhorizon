@@ -25,6 +25,7 @@ class DataConfig(BaseModel):
 
     parquet_path: str
     min_days_required: int
+    min_history_sessions: int = Field(default=60, ge=1)
     required_symbols: int
     db_schema: str
     offline_table_name: str

@@ -1,6 +1,31 @@
 version: 2.0
 
 deployments:
+  - name: historical-backfill-manual
+    version: "${IMAGE_TAG}"
+    tags: [production, historical, manual, training-only]
+    description: Collect and qualify historical bars without online publication or champion activation. Supply dates and adjustment explicitly.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+      grace_period_seconds: 300
+    entrypoint: polyhorizon/ingestion/historical_backfill.py:historical_backfill_flow
+    parameters:
+      cache_dir: /app/backfill-cache
+    schedules: []
+    work_pool:
+      name: features-docker-pool
+      job_variables:
+        image: ghcr.io/${GITHUB_REPOSITORY}/features:${IMAGE_TAG}
+        env:
+          PYTHONPATH: /app
+        volumes:
+          - "{{ $PREFECT_JOB_ENV_FILE }}:/app/.env:ro"
+          - "{{ $PREFECT_BACKFILL_CACHE_DIR }}:/app/backfill-cache"
+        image_pull_policy: Always
+        auto_remove: true
+        networks: [ml-platform]
+
   - name: sp500-universe-weekdays
     version: "${IMAGE_TAG}"
     tags: [production, universe, pre-market]

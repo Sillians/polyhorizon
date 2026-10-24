@@ -55,6 +55,37 @@ jobs:
       - name: Forecast release gate (train, register, serve)
         run: uv run python -m pytest -q tests/integration/forecast/test_forecast_release_gate.py
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: polyhorizon/frontend/package-lock.json
+
+      - name: Frontend HTTP rehearsal with trained fixture
+        working-directory: polyhorizon/frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+
+      - name: Save browser rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-rehearsal
+          path: polyhorizon/frontend/test-results/
+
+      - name: Historical publication and recovery drills
+        env:
+          PUBLICATION_E2E: "1"
+        run: |
+          docker compose -f tests/integration/features/compose.yaml up -d --wait
+          uv run python -m pytest -q tests/integration/features/test_historical_publication.py tests/integration/features/test_operational_drills.py
+
+      - name: Stop isolated rehearsal services
+        if: always()
+        run: docker compose -f tests/integration/features/compose.yaml down
+
       - name: Validate deployment shell scripts
         run: bash -n scripts/deploy/*.sh
 
@@ -97,6 +128,8 @@ jobs:
       - run: npm test
         working-directory: polyhorizon/frontend
       - run: npm run build
+        working-directory: polyhorizon/frontend
+      - run: npm audit --audit-level=high
         working-directory: polyhorizon/frontend
 
   universe-image-smoke:

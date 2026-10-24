@@ -42,7 +42,8 @@ def _publication(container: ServingContainer) -> dict:
             with connection.cursor() as cursor:
                 cursor.execute(
                     sql.SQL("SELECT dataset_id, status, max_event_time, updated_at "
-                            "FROM {}.dataset_publications ORDER BY updated_at DESC LIMIT 5")
+                            "FROM {}.dataset_publications WHERE (manifest->'historical_source' IS NULL "
+                            "OR manifest->'historical_source' = 'null'::jsonb) ORDER BY max_event_time DESC LIMIT 5")
                     .format(sql.Identifier(schema))
                 )
                 rows = cursor.fetchall()

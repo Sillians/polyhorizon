@@ -28,14 +28,15 @@ def test_existing_champion_is_never_reassigned(config):
     registry.client.set_registered_model_alias.assert_not_called()
 
 
-def test_missing_champion_bootstraps_latest_ready_version(config):
+@pytest.mark.parametrize("policy", ["nyse-full-session-v1", "nyse-historical-bars-v1", "nyse-qualified-data-v1"])
+def test_missing_champion_bootstraps_latest_ready_version(config, policy):
     registry = _registry(config)
     registry.client.get_model_version_by_alias.side_effect = RuntimeError("missing")
     registry.client.search_model_versions.return_value = [
         SimpleNamespace(version="1", status="READY", creation_timestamp=100),
         SimpleNamespace(version="3", status="FAILED_REGISTRATION", creation_timestamp=300),
         SimpleNamespace(version="2", status="READY", creation_timestamp=200,
-                        tags={"governance_qualification": "passed-v1", "session_qualification": "nyse-full-session-v1"}),
+                        tags={"governance_qualification": "passed-v1", "session_qualification": policy}),
         SimpleNamespace(version="4", status="READY", creation_timestamp=400),
     ]
 

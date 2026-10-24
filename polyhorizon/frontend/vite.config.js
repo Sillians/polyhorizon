@@ -5,8 +5,8 @@ export default defineConfig({
     host: true,
     port: 5173,
     proxy: {
-      "/v1": "http://localhost:8000",
-      "/metrics": "http://localhost:8000",
+      "/v1": process.env.REHEARSAL_API_URL || "http://localhost:8000",
+      "/metrics": process.env.REHEARSAL_API_URL || "http://localhost:8000",
     },
   },
   build: {
